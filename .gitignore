@@ -17,8 +17,8 @@ logs/
 .vscode
 
 .python-version
-pyproject.toml
-uv.lock
+# pyproject.toml
+# uv.lock
 
 .DS_Store
 
@@ -26,6 +26,7 @@ checkpoints/
 notebooks/
 results/
 eval_results*/
+eval/h200/
 *.arrow
 /shards/*
 *.png
