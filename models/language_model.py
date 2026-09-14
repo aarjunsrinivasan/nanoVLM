@@ -270,9 +270,18 @@ class LanguageModelGroupedQueryAttention(nn.Module):
         if self.sdpa and x.device.type != 'mps':
             # During decode, no additional masking needed as [1, T_kv] is naturally causal
             is_causal = (T_curr == T_kv and T_curr > 1)
+            sdpa_attn_mask = additive_attn_mask
+            if is_causal and additive_attn_mask is not None:
+                # SDPA raises if attn_mask and is_causal=True are both set, so fold the causal
+                # structure into one additive mask alongside the padding mask instead (same
+                # combination the manual path below applies).
+                causal_mask_val = torch.tril(torch.ones(T_curr, T_curr, device=x.device, dtype=torch.bool)).view(1, 1, T_curr, T_curr)
+                causal_bias = torch.zeros_like(causal_mask_val, dtype=q.dtype).masked_fill(~causal_mask_val, torch.finfo(q.dtype).min)
+                sdpa_attn_mask = additive_attn_mask + causal_bias
+                is_causal = False
             y = torch.nn.functional.scaled_dot_product_attention(
                 q, k_exp, v_exp,
-                attn_mask=additive_attn_mask, 
+                attn_mask=sdpa_attn_mask,
                 dropout_p=self.dropout if self.training else 0.0,
                 is_causal=is_causal
             )
