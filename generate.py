@@ -76,8 +76,8 @@ def main():
     image_string = get_image_string(tokenizer, [splitted_image_ratio], model.cfg.mp_image_token_length)
 
     messages = [{"role": "user", "content": image_string + args.prompt}]
-    encoded_prompt = tokenizer.apply_chat_template([messages], tokenize=True, add_generation_prompt=True)
-    tokens = torch.tensor(encoded_prompt).to(device)
+    encoded_prompt = tokenizer.apply_chat_template([messages], tokenize=True, add_generation_prompt=True, return_dict=True)
+    tokens = torch.tensor(encoded_prompt["input_ids"]).to(device)
     img_t = processed_image.to(device)
 
     print("\nInput:\n ", args.prompt, "\n\nOutput:")
