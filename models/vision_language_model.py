@@ -68,14 +68,36 @@ class VisionLanguageModel(nn.Module):
             image_embd = self.MP(image_embd)  # [num_images, mp_image_token_length, D_lm]
             token_embd = self._replace_img_tokens_with_embd(input_ids, token_embd, image_embd)
 
-        logits, _ = self.decoder(token_embd, attention_mask=attention_mask)
+        hidden_states, _ = self.decoder(token_embd, attention_mask=attention_mask)
 
         loss = None
+        logits = None
         if targets is not None:
-            logits = self.decoder.head(logits) # Apply LM head
-            # Loss is calculated over all tokens, but `targets` (labels) will have -100 for non-answer tokens.
-            # No need to slice logits based on image embedding size here, as the target mask handles it.
-            loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-100)
+            # Most positions are image tokens or masked-out prompt tokens (targets == -100), so
+            # gather the kept hidden states before the vocab head instead of projecting every
+            # position and discarding most of it via ignore_index. linear_cross_entropy's chunked
+            # path then avoids materializing the full [N, vocab_size] logits tensor for what's
+            # left. kept_hidden is upcast to fp32 because calling this op directly (unlike
+            # nn.Linear) isn't autocast-registered: under bf16 autocast, hidden_states here is
+            # already bf16 while head.weight stays fp32, and the op errors on mismatched dtypes.
+            flat_hidden = hidden_states.reshape(-1, hidden_states.size(-1))
+            flat_targets = targets.reshape(-1)
+            keep_mask = flat_targets != -100
+            kept_hidden = flat_hidden[keep_mask].float()
+            kept_targets = flat_targets[keep_mask]
+
+            loss = F.linear_cross_entropy(
+                kept_hidden,
+                self.decoder.head.weight,
+                kept_targets,
+                linear_bias=None,
+                reduction="mean",
+                ignore_index=-100,
+                options=torch.nn.LinearCrossEntropyOptions(),
+            )
+            # logits intentionally stays None: materializing [B,T,V] here would defeat the point.
+        else:
+            logits = hidden_states  # pre-existing behavior: no head applied when targets is None
 
         return logits, loss
 

@@ -4,6 +4,7 @@ import json
 import math
 import time
 import torch
+import torch._dynamo
 import wandb
 import numpy
 import random
@@ -339,6 +340,14 @@ def train(train_cfg, vlm_cfg):
     model.to(device)
     
     if train_cfg.compile:
+        # VisionLanguageModel.forward's loss branch gathers hidden states with a boolean mask
+        # (targets != -100), which has a data-dependent output shape (aten.nonzero) -- without
+        # this, Dynamo graph-breaks and recompiles on it every time the kept-token count changes
+        # shape bucket. With it, that gather traces as part of one dynamic-shape graph instead.
+        # Separately, and unaffected by this flag: the chunked linear_cross_entropy call in the
+        # same branch always falls back to eager under torch.compile (documented upstream
+        # behavior) -- expected, not a regression to chase in a --compile profiler trace.
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True
         model = torch.compile(model)
     if is_dist():
         print("Wrapping model for DDP")

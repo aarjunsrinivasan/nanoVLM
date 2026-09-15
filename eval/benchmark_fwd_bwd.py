@@ -176,13 +176,14 @@ def benchmark_batch_size(model, image_path, batch_size, max_length, autocast_dty
     model.train()
     loss_holder = {}
 
-    # One untimed, unprofiled call to observe the actual post-head output shape + a sample loss
-    # value before benchmarking. With targets=labels the LM head IS applied, so this is
-    # [B, T, vocab_size] logits -- a different shape/kind of tensor than the forward-only phase.
+    # One untimed, unprofiled call to observe a sample loss value before benchmarking. With
+    # targets=labels the LM head IS applied, but only to the gathered non-masked positions
+    # (VisionLanguageModel.forward's loss branch never materializes full [B,T,vocab_size]
+    # logits), so the first return value is always None here -- nothing to log a shape for.
     with torch.no_grad():
         sample_logits, sample_loss = model(input_ids, images, attention_mask=attention_mask, targets=labels)
-    print(f"Backward/full-step output (LM head applied, targets=labels): logits.shape={tuple(sample_logits.shape)}, loss={sample_loss.item():.4f}")
-    result["backward_output_shape"] = list(sample_logits.shape)
+    print(f"Backward/full-step output (gather-before-head, targets=labels): logits=None (gather-before-head optimization active), loss={sample_loss.item():.4f}")
+    result["backward_output_shape"] = None
     result["sample_loss"] = sample_loss.item()
     del sample_logits, sample_loss
 
