@@ -75,6 +75,11 @@ class TrainConfig:
     train_dataset_path: str = 'HuggingFaceM4/FineVision_concat_shuffled_2'
     train_dataset_name: tuple[str, ...] = ("default", ) #('allava_laion', 'allava_vflan', 'cambrian(filtered)_processed', 'LLaVA_Instruct_150K', 'mmevol', 'sharegpt4o', 'sharegpt4v(coco)', 'sharegpt4v(knowledge)', 'sharegpt4v(llava)', 'sharegpt4v(sam)') # 'vision_flan(filtered)', 'lvis_instruct4v',
     stream_dataset: bool = True
+    dataset_cache_dir: str = None # If set (requires stream_dataset), whole parquet shards are downloaded on demand into this dir and read locally (data/shard_cache.py)
+    max_cache_gb: float = 30.0 # LRU cap on the local shard cache in GiB
+    prefetch_shards: int = 1 # Number of each DataLoader worker's upcoming shards to download in the background
+    cache_evict_grace_min: float = 2.0 # Never evict shards touched within this many minutes (readers heartbeat the shards they hold)
+    num_workers: int = 2 # Train DataLoader workers (val uses 1)
     relevance_min_rating: int = 1
     image_correspondence_min_rating: int = 1
     visual_dependency_min_rating: int = 1

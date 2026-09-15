@@ -30,6 +30,7 @@ from data.datasets import VQADataset
 from data.collators import VQACollator
 from data.data_utils import synchronized_dataloader_step
 from data.advanced_datasets import ConstantLengthDataset
+from data.shard_cache import get_cached_train_val_datasets
 from data.processors import get_image_processor, get_tokenizer
 
 import models.config as config
@@ -112,12 +113,7 @@ def get_run_name(train_cfg, vlm_cfg):
 
     return f"nanoVLM_{vit}_{mp}_{llm}_{num_gpus}_{batch_size}_{max_training_steps}_{learning_rate}_{date}"
 
-def get_dataloaders(train_cfg, vlm_cfg):
-    print(f"Getting dataloaders from {train_cfg.train_dataset_path}")
-    # Create datasets
-    image_processor = get_image_processor(vlm_cfg.max_img_size, vlm_cfg.vit_img_size, vlm_cfg.resize_to_max_side_len)
-    tokenizer = get_tokenizer(vlm_cfg.lm_tokenizer, vlm_cfg.vlm_extra_tokens, vlm_cfg.lm_chat_template)
-
+def get_hub_train_val_datasets(train_cfg):
     dataset_names_to_load = train_cfg.train_dataset_name
     if "shards" in train_cfg.train_dataset_name:
         print("Loading shards")
@@ -176,6 +172,25 @@ def get_dataloaders(train_cfg, vlm_cfg):
         val_ds = train_ds.select(range(val_size))
         train_ds = train_ds.select(range(val_size, len(train_ds)))
 
+    return train_ds, val_ds
+
+def get_dataloaders(train_cfg, vlm_cfg):
+    print(f"Getting dataloaders from {train_cfg.train_dataset_path}")
+    # Create datasets
+    image_processor = get_image_processor(vlm_cfg.max_img_size, vlm_cfg.vit_img_size, vlm_cfg.resize_to_max_side_len)
+    tokenizer = get_tokenizer(vlm_cfg.lm_tokenizer, vlm_cfg.vlm_extra_tokens, vlm_cfg.lm_chat_template)
+
+    if train_cfg.dataset_cache_dir is not None:
+        if not train_cfg.stream_dataset:
+            raise ValueError("dataset_cache_dir requires stream_dataset=True")
+        if tuple(train_cfg.train_dataset_name) != ("default",):
+            raise ValueError("dataset_cache_dir reads all parquet shards of the repo, so train_dataset_name must be ('default',)")
+        # Don't iterate the datasets here: that would start download threads before the DataLoader forks its workers
+        train_ds, val_ds = get_cached_train_val_datasets(train_cfg, get_world_size(), get_rank())
+        print(f"Val size per GPU: {int(train_cfg.val_size/get_world_size())}")
+    else:
+        train_ds, val_ds = get_hub_train_val_datasets(train_cfg)
+
     train_dataset = VQADataset(
         train_ds,
         tokenizer,
@@ -215,7 +230,7 @@ def get_dataloaders(train_cfg, vlm_cfg):
         train_dataset,
         batch_size=train_cfg.batch_size,    # =per device BS in DDP
         collate_fn=vqa_collator,
-        num_workers=3,
+        num_workers=train_cfg.num_workers,
         pin_memory=True,
         persistent_workers=False,
         drop_last=True,
@@ -654,6 +669,10 @@ def main():
     parser.add_argument('--resume_from_vlm_checkpoint', type=bool, default=False, help='Resume training from VLM checkpoint specified by vlm_checkpoint_path (or default if not provided)')
     parser.add_argument('--no_log_wandb', action='store_true', help='Do not log to wandb')
     parser.add_argument('--train_dataset_path', type=str, help='Train dataset path')
+    parser.add_argument('--dataset_cache_dir', type=str, help='Download whole dataset shards on demand into this local cache dir and read them from disk')
+    parser.add_argument('--max_cache_gb', type=float, help='LRU size cap of the local shard cache in GiB')
+    parser.add_argument('--prefetch_shards', type=int, help='Upcoming shards per DataLoader worker to download in the background')
+    parser.add_argument('--num_workers', type=int, help='Train DataLoader workers')
     parser.add_argument('--relevance_min_rating', type=int, help='Minimum relevance rating of images per sample')
     parser.add_argument('--image_correspondence_min_rating', type=int, help='Minimum image correspondence rating of images per sample')
     parser.add_argument('--visual_dependency_min_rating', type=int, help='Minimum visual dependency rating of images per sample')
@@ -678,6 +697,14 @@ def main():
         train_cfg.log_wandb = False
     if args.train_dataset_path is not None:
         train_cfg.train_dataset_path = args.train_dataset_path
+    if args.dataset_cache_dir is not None:
+        train_cfg.dataset_cache_dir = args.dataset_cache_dir
+    if args.max_cache_gb is not None:
+        train_cfg.max_cache_gb = args.max_cache_gb
+    if args.prefetch_shards is not None:
+        train_cfg.prefetch_shards = args.prefetch_shards
+    if args.num_workers is not None:
+        train_cfg.num_workers = args.num_workers
     if args.relevance_min_rating is not None:
         train_cfg.relevance_min_rating = args.relevance_min_rating
     if args.image_correspondence_min_rating is not None:
