@@ -32,7 +32,16 @@ class VLMConfig:
     lm_tie_weights: bool = True # Decide if you want to tie the LM Head weight to the token embedding weights
     lm_model_type: str = 'HuggingFaceTB/SmolLM2-360M-Instruct' #'HuggingFaceTB/SmolLM2-135M' #
     lm_tokenizer: str = 'HuggingFaceTB/SmolLM2-360M-Instruct'
-    lm_chat_template: str = "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+    # Training loss path (VisionLanguageModel.forward with targets):
+    #   'full'    - head over every position, then cross_entropy with ignore_index (pre-68921a5)
+    #   'gather'  - gather positions with targets != -100, then head + cross_entropy
+    #   'chunked' - gather, then fp32 chunked F.linear_cross_entropy (never materializes [N, V])
+    # 'gather' is the default: on an H100 it is the fastest of the three and keeps ~95% of 'chunked'
+    # memory saving, with losses identical to 'full'. 'chunked' saves a further ~0.2-0.5 GiB for
+    # ~3-6% throughput, so it is the choice only when memory, not speed, is the binding constraint.
+    # See experiments_h100/loss_gather_ab/.
+    lm_loss_impl: str = 'gather'
+    lm_chat_template: str ="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 
     mp_pixel_shuffle_factor: int = 4
     mp_image_token_length: int = 64
@@ -85,6 +94,10 @@ class TrainConfig:
     visual_dependency_min_rating: int = 1
     formatting_min_rating: int = 1
     wandb_entity: str = "HuggingFace" # Indicate the entity to log to in wandb
+    wandb_project: str = "nanoVLM"
+    wandb_group: str = None # One group per experiment (e.g. an A/B sweep), so its runs compare side by side
+    wandb_tags: tuple[str, ...] = ()
+    run_name_suffix: str = None # Appended to the auto-generated run name (e.g. the loss arm)
     log_wandb: bool = True
     use_lmms_eval: bool = True # Use lmms-eval for evaluation
     lmms_eval_tasks: str = 'mmstar,mmmu_val,ocrbench,textvqa_val,docvqa_val,scienceqa,mme,infovqa_val,chartqa' # Pass additional task as one string, seperated by commas without spaces (e.g. 'mmstar,mmmu,ocrbench')

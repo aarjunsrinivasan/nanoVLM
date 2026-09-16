@@ -73,29 +73,41 @@ class VisionLanguageModel(nn.Module):
         loss = None
         logits = None
         if targets is not None:
+            loss_impl = self.cfg.lm_loss_impl
+            if loss_impl == "full":
+                logits = self.decoder.head(hidden_states)
+                loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-100)
+                return logits, loss
+
             # Most positions are image tokens or masked-out prompt tokens (targets == -100), so
             # gather the kept hidden states before the vocab head instead of projecting every
-            # position and discarding most of it via ignore_index. linear_cross_entropy's chunked
-            # path then avoids materializing the full [N, vocab_size] logits tensor for what's
-            # left. kept_hidden is upcast to fp32 because calling this op directly (unlike
-            # nn.Linear) isn't autocast-registered: under bf16 autocast, hidden_states here is
-            # already bf16 while head.weight stays fp32, and the op errors on mismatched dtypes.
+            # position and discarding most of it via ignore_index.
             flat_hidden = hidden_states.reshape(-1, hidden_states.size(-1))
             flat_targets = targets.reshape(-1)
             keep_mask = flat_targets != -100
-            kept_hidden = flat_hidden[keep_mask].float()
+            kept_hidden = flat_hidden[keep_mask]
             kept_targets = flat_targets[keep_mask]
 
-            loss = F.linear_cross_entropy(
-                kept_hidden,
-                self.decoder.head.weight,
-                kept_targets,
-                linear_bias=None,
-                reduction="mean",
-                ignore_index=-100,
-                options=torch.nn.LinearCrossEntropyOptions(),
-            )
-            # logits intentionally stays None: materializing [B,T,V] here would defeat the point.
+            if loss_impl == "gather":
+                # Same numerics as 'full' (the head runs under autocast), just on fewer rows.
+                kept_logits = self.decoder.head(kept_hidden)
+                loss = F.cross_entropy(kept_logits, kept_targets, ignore_index=-100)
+            elif loss_impl == "chunked":
+                # linear_cross_entropy's chunked path avoids materializing [N, vocab_size] logits.
+                # kept_hidden is upcast to fp32 because this op (unlike nn.Linear) isn't
+                # autocast-registered and errors on a bf16 input with the fp32 head weight.
+                loss = F.linear_cross_entropy(
+                    kept_hidden.float(),
+                    self.decoder.head.weight,
+                    kept_targets,
+                    linear_bias=None,
+                    reduction="mean",
+                    ignore_index=-100,
+                    options=torch.nn.LinearCrossEntropyOptions(),
+                )
+            else:
+                raise ValueError(f"Unknown lm_loss_impl: {loss_impl!r} (expected 'full', 'gather' or 'chunked')")
+            # logits stays None: materializing [B,T,V] here would defeat the point of gathering.
         else:
             logits = hidden_states  # pre-existing behavior: no head applied when targets is None
 
