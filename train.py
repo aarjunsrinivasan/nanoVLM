@@ -111,7 +111,26 @@ def get_run_name(train_cfg, vlm_cfg):
     mp = f"mp{vlm_cfg.mp_pixel_shuffle_factor}"
     llm = f"{vlm_cfg.lm_model_type.split('/')[-1]}"
 
-    return f"nanoVLM_{vit}_{mp}_{llm}_{num_gpus}_{batch_size}_{max_training_steps}_{learning_rate}_{date}"
+    run_name = f"nanoVLM_{vit}_{mp}_{llm}_{num_gpus}_{batch_size}_{max_training_steps}_{learning_rate}_{date}"
+    if train_cfg.run_name_suffix:
+        run_name = f"{run_name}_{train_cfg.run_name_suffix}"
+    return run_name
+
+def get_provenance():
+    """Git commit, torch version and GPU behind a run, so logged numbers can be traced back."""
+    repo_dir = os.path.dirname(os.path.abspath(__file__))
+    def git(*args):
+        try:
+            return subprocess.run(["git", *args], cwd=repo_dir, capture_output=True, text=True, check=True).stdout.strip()
+        except (OSError, subprocess.CalledProcessError):
+            return None
+    status = git("status", "--porcelain", "--", "models", "data", "train.py")
+    return {
+        "git_sha": git("rev-parse", "HEAD"),
+        "git_dirty": bool(status) if status is not None else None,
+        "torch_version": torch.__version__,
+        "gpu_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+    }
 
 def get_hub_train_val_datasets(train_cfg):
     dataset_names_to_load = train_cfg.train_dataset_name
@@ -292,10 +311,13 @@ def train(train_cfg, vlm_cfg):
     if train_cfg.log_wandb and is_master():
         run = wandb.init(
             entity=train_cfg.wandb_entity,
-            project="nanoVLM",
+            project=train_cfg.wandb_project,
+            group=train_cfg.wandb_group,
+            tags=list(train_cfg.wandb_tags),
             config={
                 "VLMConfig": asdict(vlm_cfg),
-                "TrainConfig": asdict(train_cfg)
+                "TrainConfig": asdict(train_cfg),
+                "provenance": get_provenance(),
             },
             name=run_name,
         )
@@ -375,6 +397,10 @@ def train(train_cfg, vlm_cfg):
     logged_eval_steps = set()
     global_step = 0
     epoch = 0
+    overall_peak_mem_allocated_gib = 0.0
+    logged_tokens_per_second = []
+    if device.type == "cuda":
+        torch.cuda.reset_peak_memory_stats()
     
     # Training stats accumulators
     accumulated_stats = {
@@ -552,7 +578,20 @@ def train(train_cfg, vlm_cfg):
                     stats['min_images_per_sample'] = min(all_images_flat)
                 else:
                     stats['min_images_per_sample'] = min(accumulated_stats['images_per_sample'])
-                
+
+                # Peak memory since the last stats log (this rank only)
+                if device.type == "cuda":
+                    stats['peak_mem_allocated_gib'] = torch.cuda.max_memory_allocated() / 2**30
+                    stats['peak_mem_reserved_gib'] = torch.cuda.max_memory_reserved() / 2**30
+                    overall_peak_mem_allocated_gib = max(overall_peak_mem_allocated_gib, stats['peak_mem_allocated_gib'])
+                    torch.cuda.reset_peak_memory_stats()
+                logged_tokens_per_second.append(stats['avg_tokens_per_second'])
+
+                if is_master():
+                    print(f"Step: {global_step}, Loss: {batch_loss:.4f}, Tokens/s: {stats['avg_tokens_per_second']:.0f}, "
+                          f"fw_bw: {stats['avg_fw_bw_time']:.3f}s, data: {stats['avg_data_load_time']:.3f}s, "
+                          f"peak alloc: {stats.get('peak_mem_allocated_gib', 0.0):.2f} GiB, peak reserved: {stats.get('peak_mem_reserved_gib', 0.0):.2f} GiB")
+
                 # MASTER ONLY: Log to wandb
                 if train_cfg.log_wandb and is_master():
                     run.log({
@@ -655,6 +694,10 @@ def train(train_cfg, vlm_cfg):
         if train_cfg.log_wandb:
             run.summary["avg_epoch_time"] = avg_epoch_time
             run.summary["avg_time_per_sample"] = avg_time_per_sample
+            run.summary["overall_peak_mem_allocated_gib"] = overall_peak_mem_allocated_gib
+            run.summary["best_val_loss"] = best_val_loss
+            if logged_tokens_per_second:
+                run.summary["mean_tokens_per_second"] = mean(logged_tokens_per_second)
             run.finish()
 
 def main():
@@ -664,7 +707,7 @@ def main():
     parser.add_argument('--lr_vision_backbone', type=float, help='Learning rate for the vision backbone')
     parser.add_argument('--lr_language_backbone', type=float, help='Learning rate for the language backbone')
     parser.add_argument('--vlm_checkpoint_path', type=str, help='Path to the VLM checkpoint for loading or saving')
-    parser.add_argument('--compile', type=bool, help='Use torch.compile to optimize the model')
+    parser.add_argument('--compile', action='store_true', default=None, help='Use torch.compile to optimize the model')
     parser.add_argument('--log_wandb', type=bool, help='Log to wandb')
     parser.add_argument('--resume_from_vlm_checkpoint', type=bool, default=False, help='Resume training from VLM checkpoint specified by vlm_checkpoint_path (or default if not provided)')
     parser.add_argument('--no_log_wandb', action='store_true', help='Do not log to wandb')
@@ -677,6 +720,22 @@ def main():
     parser.add_argument('--image_correspondence_min_rating', type=int, help='Minimum image correspondence rating of images per sample')
     parser.add_argument('--visual_dependency_min_rating', type=int, help='Minimum visual dependency rating of images per sample')
     parser.add_argument('--formatting_min_rating', type=int, help='Minimum formatting rating of images per sample')
+    parser.add_argument('--lm_model_type', type=str, help='Language backbone, e.g. HuggingFaceTB/SmolLM2-135M for the ~230M VLM')
+    parser.add_argument('--loss_impl', type=str, choices=['full', 'gather', 'chunked'], help='Training loss path (see VLMConfig.lm_loss_impl)')
+    parser.add_argument('--batch_size', type=int, help='Micro-batch size per GPU')
+    parser.add_argument('--gradient_accumulation_steps', type=int, help='Micro-batches per optimizer step')
+    parser.add_argument('--max_training_steps', type=int, help='Optimizer steps (also sets the LR schedule length)')
+    parser.add_argument('--eval_interval', type=int, help='Validate and checkpoint every N optimizer steps')
+    parser.add_argument('--no_eval', action='store_true', help='Skip in-loop validation and checkpointing')
+    parser.add_argument('--val_size', type=int, help='Number of validation samples')
+    parser.add_argument('--stats_log_interval', type=int, help='Log training stats every N optimizer steps')
+    parser.add_argument('--wandb_entity', type=str, help='wandb entity (user or team)')
+    parser.add_argument('--wandb_project', type=str, help='wandb project')
+    parser.add_argument('--wandb_group', type=str, help='wandb group, one per experiment')
+    parser.add_argument('--wandb_tags', type=str, help='Comma-separated wandb tags')
+    parser.add_argument('--run_name_suffix', type=str, help='Appended to the generated run name')
+    parser.add_argument('--no_lmms_eval', action='store_true', help='Do not submit lmms-eval jobs (they need Slurm)')
+    parser.add_argument('--no_hub_push', action='store_true', help='Do not push the best model to the Hugging Face Hub')
 
     args = parser.parse_args()
 
@@ -713,6 +772,38 @@ def main():
         train_cfg.visual_dependency_min_rating = args.visual_dependency_min_rating
     if args.formatting_min_rating is not None:
         train_cfg.formatting_min_rating = args.formatting_min_rating
+    if args.lm_model_type is not None:
+        vlm_cfg.lm_model_type = args.lm_model_type
+    if args.loss_impl is not None:
+        vlm_cfg.lm_loss_impl = args.loss_impl
+    if args.batch_size is not None:
+        train_cfg.batch_size = args.batch_size
+    if args.gradient_accumulation_steps is not None:
+        train_cfg.gradient_accumulation_steps = args.gradient_accumulation_steps
+    if args.max_training_steps is not None:
+        train_cfg.max_training_steps = args.max_training_steps
+    if args.eval_interval is not None:
+        train_cfg.eval_interval = args.eval_interval
+    if args.no_eval:
+        train_cfg.eval_in_epochs = False
+    if args.val_size is not None:
+        train_cfg.val_size = args.val_size
+    if args.stats_log_interval is not None:
+        train_cfg.stats_log_interval = args.stats_log_interval
+    if args.wandb_entity is not None:
+        train_cfg.wandb_entity = args.wandb_entity
+    if args.wandb_project is not None:
+        train_cfg.wandb_project = args.wandb_project
+    if args.wandb_group is not None:
+        train_cfg.wandb_group = args.wandb_group
+    if args.wandb_tags is not None:
+        train_cfg.wandb_tags = tuple(t for t in args.wandb_tags.split(',') if t)
+    if args.run_name_suffix is not None:
+        train_cfg.run_name_suffix = args.run_name_suffix
+    if args.no_lmms_eval:
+        train_cfg.use_lmms_eval = False
+    if args.no_hub_push:
+        vlm_cfg.hf_repo_name = None
 
     if args.resume_from_vlm_checkpoint and args.vlm_checkpoint_path is not None:
         train_cfg.resume_from_vlm_checkpoint = True
