@@ -44,37 +44,42 @@ You can either clone the repository, setup an environment and start with the scr
 
 ## Environment Setup
 
-We really like `uv` and recommend using it as your package manager. But feel free to use whichever you prefer.
+The environment is pinned in `uv.lock` and installed with `uv`. Tested on 1× H100 80GB (driver 570, with the compat libraries below).
 
-Let's first clone the repository:
 ```bash
-git clone https://github.com/huggingface/nanoVLM.git
+git clone -b dev https://github.com/aarjunsrinivasan/nanoVLM.git
 cd nanoVLM
-```
-
-If you want to use `uv`:
-```bash
-uv init --bare --python 3.12
-uv sync --python 3.12
+uv sync --frozen            # creates .venv from uv.lock (includes pytest from the dev group)
 source .venv/bin/activate
-uv add torch numpy torchvision pillow datasets huggingface-hub transformers wandb
-# Optional: for lmms-eval integration you have to install it from source, see section 'Evaluation with lmms-eval'
 ```
 
-If you prefer another environment manager, simply install these packages:  
+Pinned versions: Python 3.12, `torch` 2.14.0 (CUDA 13.0 wheels), `torchvision` 0.29.0, `transformers` 5.17.0, `datasets` 5.0.1, `huggingface-hub` 1.30.0, `lmms-eval` 0.7.3, `wandb` 0.30.0.
+
+`torch` must be ≥2.14 (per `pyproject.toml`); the loss path in `models/vision_language_model.py` uses `F.linear_cross_entropy` with `LinearCrossEntropyOptions`.
+
+#### GPU driver
+
+The torch 2.14 wheels need an NVIDIA driver ≥580 (`nvidia-smi` shows the version). On an older driver, torch still imports, but `torch.cuda.is_available()` returns `False` and the GPU tests skip instead of failing. If you can't upgrade the driver (for example, in a rented container), you have two options:
+
+1. **CUDA forward-compat libraries.** These work on datacenter GPUs only (e.g. A100/H100). This is what the H100 pod with driver 570 uses:
+   ```bash
+   apt-get install -y cuda-compat-13-0      # from NVIDIA's CUDA apt repo
+   export LD_LIBRARY_PATH=/usr/local/cuda-13.0/compat${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}   # add to ~/.bashrc
+   ```
+2. **torch 2.13.0+cu129 with torchvision 0.28.0** from `https://download.pytorch.org/whl/cu129`. It needs no compat libraries on driver ≥525. It has the same `linear_cross_entropy` API, and `tests/test_vision_language_model_loss.py` passes with it. It is below the pinned version, though, so you have to install it outside the lock.
+
+On a RunPod pod only `/workspace` persists, so run `bash scripts/setup_pod.sh` after every restart. It reinstalls the compat libraries and `numactl` and checks that torch sees the GPU.
+
+#### Verify
+
 ```bash
-pip install torch numpy torchvision pillow datasets huggingface-hub transformers wandb
-# Optional: for lmms-eval integration you have to install it from source, see section 'Evaluation with lmms-eval'
-
+python -c "import torch; print(torch.__version__, torch.cuda.is_available())"   # expect 2.14.0+cu130 True
+python -m pytest tests/test_vision_language_model_loss.py -v                      # 4 passed
 ```
-Dependencies: 
-- `torch` <3
-- `numpy` <3
-- `torchvision` for the image processors
-- `pillow` for image loading
-- `datasets` for the training datasets
-- `huggingface-hub` & `transformers` to load the pretrained backbones
-- `wandb` for logging
+
+Also useful:
+- `numactl` (`apt-get install -y numactl`), needed by `experiments/loss_optimization/scripts/run_train_e2e.sh`.
+- `HF_TOKEN`, to avoid Hub rate limits when streaming FineVision.
 
 ## Training
 
@@ -115,8 +120,7 @@ Generation 5:  This is a cat sitting on the ground, which is covered with a mat.
 nanoVLM now supports evaluation using the comprehensive [lmms-eval](https://github.com/EvolvingLMMs-Lab/lmms-eval) toolkit:
 
 ```bash
-# Install lmms-eval (has to be from source)
-uv pip install git+https://github.com/EvolvingLMMs-Lab/lmms-eval.git
+# lmms-eval (0.7.3) is already installed by `uv sync --frozen`, see 'Environment Setup'
 
 # Make sure you have your environment variables set correctly and you are logged in to HF
 export HF_HOME="<Path to HF cache>"

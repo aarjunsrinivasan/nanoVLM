@@ -227,7 +227,7 @@ def main():
     parser.add_argument("--num_iters", type=int, default=10)
     parser.add_argument("--row_limit", type=int, default=20, help="Rows to show in each profiler table.")
     parser.add_argument("--trace_dir", default=None, help="If set, export a Chrome trace per phase (and batch size) to this directory.")
-    parser.add_argument("--results_file", default="eval/h200/benchmark_fwd_bwd_results.json", help="Results are grouped under eval/<gpu>/ by the hardware they were measured on.")
+    parser.add_argument("--results_file", default="eval/h100/benchmark_fwd_bwd_results.json", help="Results are grouped under eval/<gpu>/ by the hardware they were measured on.")
     parser.add_argument("--compile", action="store_true", help="Wrap the model with torch.compile() before benchmarking (each batch size gets an isolated fresh compile via torch._dynamo.reset()).")
     parser.add_argument("--profile_batch_size", type=int, default=None,
                          help="Only this batch size gets the detailed torch.profiler op tables (default: the largest in --batch_sizes). "
@@ -282,6 +282,7 @@ def main():
     df = pd.DataFrame(all_results)
     print(df.to_string(index=False))
 
+    os.makedirs(os.path.dirname(args.results_file) or ".", exist_ok=True)
     with open(args.results_file, "w") as f:
         json.dump(all_results, f, indent=2)
     print(f"\nSaved results to {args.results_file}")
