@@ -1,0 +1,176 @@
+import torch
+import torch.nn.functional as F
+import unittest
+from models.vision_language_model import VisionLanguageModel
+from models.config import VLMConfig
+
+
+class TestVisionLanguageModelPacking(unittest.TestCase):
+    """Strongest correctness proof for the packing-attention fix: a packed row (two independent
+    sub-samples concatenated, with doc_id) run through the real VisionLanguageModel must produce
+    IDENTICAL per-token loss/gradients to running each sub-sample through the model SEPARATELY --
+    a correct fix means the model literally can't tell packed-and-masked-correctly apart from
+    not-packed-at-all. Mirrors tests/test_vision_language_model_loss.py's oracle-vs-actual style.
+    """
+
+    def setUp(self):
+        torch.manual_seed(0)
+        self.cfg = VLMConfig(
+            vit_model_type='testing',
+            lm_model_type='testing',
+            lm_hidden_dim=64,
+            lm_inter_dim=128,
+            lm_rms_eps=1e-5,
+            lm_re_base=10000.0,
+            lm_max_position_embeddings=512,
+            lm_attn_scaling=1.0,
+            lm_n_heads=4,
+            lm_n_kv_heads=2,
+            lm_dropout=0.0,
+            lm_n_blocks=2,
+            lm_use_tokens=False,
+            lm_tie_weights=True,
+            mp_pixel_shuffle_factor=2,
+            # 128 (VLMConfig's own default) -- see tests/test_attn_packing.py's comment on why a
+            # too-small block_size breaks the real CUDA/Triton kernel even though CPU tolerates it.
+            lm_attn_flex_block_size=128,
+        )
+        self.model = VisionLanguageModel(self.cfg, load_backbone=False)
+        self.model.eval()  # dropout is 0.0 everywhere, so this only removes any stray randomness
+        self.initial_state_dict = {k: v.detach().clone() for k, v in self.model.state_dict().items()}
+
+        # Two independent VQA-shaped sub-samples. No images -- keeps this test focused on
+        # cross-sample attention, not vision-token replacement (covered by
+        # test_vision_language_model_loss.py). Concatenated directly with no separator token:
+        # the real ConstantLengthDataset separator is attention_mask=0/label=-100, functionally
+        # inert for this test either way (see data/advanced_datasets.py's _producer).
+        self.T1, self.T2 = 9, 7
+        self.input_ids_1 = torch.randint(0, self.cfg.lm_vocab_size, (1, self.T1))
+        self.input_ids_2 = torch.randint(0, self.cfg.lm_vocab_size, (1, self.T2))
+        self.labels_1 = torch.full((1, self.T1), -100, dtype=torch.long)
+        self.labels_1[:, 3:] = torch.randint(0, self.cfg.lm_vocab_size, (1, self.T1 - 3))
+        self.labels_2 = torch.full((1, self.T2), -100, dtype=torch.long)
+        self.labels_2[:, 2:] = torch.randint(0, self.cfg.lm_vocab_size, (1, self.T2 - 2))
+
+    def _images(self, batch_size):
+        return [[] for _ in range(batch_size)]  # no images per sample
+
+    def _build_model(self, packing_impl, device=None):
+        """lm_attn_packing_impl is architectural (cached at construction time in both LanguageModel
+        and LanguageModelGroupedQueryAttention -- see models/language_model.py), not a live
+        per-call switch like lm_loss_impl, so switching it requires building a fresh model, not
+        mutating cfg on an already-built one. Loading the SAME initial_state_dict works across
+        impls because none of them add/remove parameters -- they only change which attention-core
+        branch runs, using the same q/k/v/out_proj weights."""
+        cfg = VLMConfig(**{**vars(self.cfg), 'lm_attn_packing_impl': packing_impl})
+        model = VisionLanguageModel(cfg, load_backbone=False)
+        model.load_state_dict(self.initial_state_dict)
+        model.eval()
+        if device is not None:
+            model.to(device)
+        return model
+
+    def _per_token_loss(self, model, input_ids, attention_mask, labels, doc_id):
+        """Bypasses forward()'s targets= loss branch (whose reduction is mean, and thus not
+        directly comparable across differently-sized packed vs. unpacked calls) and instead
+        manually reconstructs per-token losses, exactly like
+        test_vision_language_model_loss.py's _reference_loss_and_grads."""
+        hidden_states, _ = model(
+            input_ids, self._images(input_ids.size(0)), attention_mask=attention_mask, targets=None, doc_id=doc_id,
+        )
+        logits = F.linear(hidden_states, model.decoder.head.weight)
+        return F.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), labels.reshape(-1), ignore_index=-100, reduction='none',
+        ).reshape(labels.shape)
+
+    def _run_packed_and_unpacked(self, packing_impl, device=None):
+        i1, i2 = self.input_ids_1, self.input_ids_2
+        l1, l2 = self.labels_1, self.labels_2
+        if device is not None:
+            i1, i2, l1, l2 = (t.to(device) for t in (i1, i2, l1, l2))
+        am1 = torch.ones_like(i1)
+        am2 = torch.ones_like(i2)
+
+        # --- Unpacked reference: each sub-sample through the model on its own. Any impl works
+        # here since doc_id=None short-circuits packing entirely regardless of packing_impl --
+        # 'none' is used for simplicity/consistency across calls. ---
+        ref_model = self._build_model('none', device)
+        ref_model.zero_grad(set_to_none=True)
+        per_token_1 = self._per_token_loss(ref_model, i1, am1, l1, doc_id=None)
+        per_token_2 = self._per_token_loss(ref_model, i2, am2, l2, doc_id=None)
+        num_valid = (l1 != -100).sum() + (l2 != -100).sum()
+        (per_token_1.sum() + per_token_2.sum()).div(num_valid).backward()
+        ref_grads = {n: p.grad.clone() for n, p in ref_model.named_parameters() if p.grad is not None}
+
+        # --- Packed: both sub-samples concatenated into one row, doc_id-aware masking ---
+        packed_ids = torch.cat([i1, i2], dim=1)
+        packed_labels = torch.cat([l1, l2], dim=1)
+        packed_am = torch.cat([am1, am2], dim=1)
+        doc_id = torch.cat([torch.zeros_like(i1), torch.ones_like(i2)], dim=1)
+
+        packed_model = self._build_model(packing_impl, device)
+        packed_model.zero_grad(set_to_none=True)
+        per_token_packed = self._per_token_loss(packed_model, packed_ids, packed_am, packed_labels, doc_id=doc_id)
+        per_token_packed.sum().div(num_valid).backward()
+        actual_grads = {n: p.grad.clone() for n, p in packed_model.named_parameters() if p.grad is not None}
+
+        return per_token_1, per_token_2, per_token_packed, ref_grads, actual_grads
+
+    def _assert_packed_matches_unpacked(self, packing_impl, device=None):
+        per_token_1, per_token_2, per_token_packed, ref_grads, actual_grads = self._run_packed_and_unpacked(packing_impl, device)
+
+        # Per-token losses at every position must match exactly (denominator-independent check).
+        torch.testing.assert_close(per_token_packed[:, :self.T1], per_token_1, atol=1e-4, rtol=1e-3)
+        torch.testing.assert_close(per_token_packed[:, self.T1:], per_token_2, atol=1e-4, rtol=1e-3)
+
+        # Gradients (summed over both sub-samples with a shared, matching denominator) must match.
+        self.assertEqual(set(ref_grads.keys()), set(actual_grads.keys()))
+        for name in ref_grads:
+            torch.testing.assert_close(
+                actual_grads[name], ref_grads[name], atol=1e-4, rtol=1e-3,
+                msg=lambda m, name=name: f"grad mismatch for {name} ({packing_impl}): {m}",
+            )
+
+    def test_packed_matches_unpacked_reference_dense_block_diagonal(self):
+        self._assert_packed_matches_unpacked('dense_block_diagonal')
+
+    def test_packed_matches_unpacked_reference_flex_document_causal_forward_only(self):
+        # Forward-only (no .backward()): flex_attention has no CPU backward support (confirmed:
+        # calling it with requires_grad inputs on CPU raises NotImplementedError immediately).
+        # Gradient parity for flex is covered by the CUDA-gated test below.
+        i1, i2 = self.input_ids_1, self.input_ids_2
+        l1, l2 = self.labels_1, self.labels_2
+        am1, am2 = torch.ones_like(i1), torch.ones_like(i2)
+        ref_model = self._build_model('none')
+        flex_model = self._build_model('flex_document_causal')
+        with torch.no_grad():
+            per_token_1 = self._per_token_loss(ref_model, i1, am1, l1, doc_id=None)
+            per_token_2 = self._per_token_loss(ref_model, i2, am2, l2, doc_id=None)
+
+            packed_ids = torch.cat([i1, i2], dim=1)
+            packed_labels = torch.cat([l1, l2], dim=1)
+            packed_am = torch.cat([am1, am2], dim=1)
+            doc_id = torch.cat([torch.zeros_like(i1), torch.ones_like(i2)], dim=1)
+            per_token_packed = self._per_token_loss(flex_model, packed_ids, packed_am, packed_labels, doc_id=doc_id)
+
+        torch.testing.assert_close(per_token_packed[:, :self.T1], per_token_1, atol=1e-4, rtol=1e-3)
+        torch.testing.assert_close(per_token_packed[:, self.T1:], per_token_2, atol=1e-4, rtol=1e-3)
+
+    @unittest.skipUnless(torch.cuda.is_available(), "flex_attention has no CPU backward support")
+    def test_packed_matches_unpacked_reference_flex_document_causal_cuda(self):
+        self._assert_packed_matches_unpacked('flex_document_causal', device=torch.device('cuda'))
+
+    def test_none_impl_does_not_match_unpacked_reference(self):
+        """Negative control: proves the equivalence tests above are actually sensitive to the bug
+        (lm_attn_packing_impl='none' must NOT match the unpacked reference), not vacuously
+        passing regardless of masking."""
+        per_token_1, per_token_2, per_token_packed, _, _ = self._run_packed_and_unpacked('none')
+        matches = (
+            torch.allclose(per_token_packed[:, :self.T1], per_token_1, atol=1e-4, rtol=1e-3)
+            and torch.allclose(per_token_packed[:, self.T1:], per_token_2, atol=1e-4, rtol=1e-3)
+        )
+        self.assertFalse(matches, "'none' should NOT match the unpacked reference (that's the bug); it did.")
+
+
+if __name__ == '__main__':
+    unittest.main()

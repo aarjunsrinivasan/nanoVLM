@@ -55,6 +55,8 @@ class ConstantLengthDataset(IterableDataset):
                 - labels: Tensor of labels of shape (seq_length,)
                 - attention_mask: Tensor of attention mask of shape (seq_length,)
                 - images: List of processed image tensors
+                - doc_id: Tensor of shape (seq_length,), long -- which packed sub-sample (0, 1, 2, ...)
+                  each position belongs to, for cross-sample attention masking (models/language_model.py)
         """
         worker_info = get_worker_info()
         worker_id = worker_info.id if worker_info else 0
@@ -162,6 +164,7 @@ class ConstantLengthDataset(IterableDataset):
                     "labels":         packed[1],
                     "attention_mask": packed[2],
                     "images":         packed[3],
+                    "doc_id":         packed[4],
                 })
 
             if packed_group:
@@ -222,16 +225,21 @@ class ConstantLengthDataset(IterableDataset):
         return [g for g in knapsack_groups if g]
 
     def _pack_one_group(self, group_indices, batch, max_len):
-        ids, lbl, am, ims = [], [], [], []
+        ids, lbl, am, ims, doc = [], [], [], [], []
 
-        for i in group_indices:
+        for k, i in enumerate(group_indices):
             ids.extend(batch[i]["input_ids"])
             lbl.extend(batch[i]["labels"])
             am.extend(batch[i]["attention_mask"])
             ims.extend(batch[i]["images"])
+            # Which sub-sample (0, 1, 2, ...) within this packed row each token belongs to --
+            # group_indices' order is fixed by this point (_balanced_greedy_knapsack only shuffles
+            # the list of groups, never the indices within one group), so this numbering is
+            # deterministic. Consumed by the attention core to prevent cross-sample attention.
+            doc.extend([k] * len(batch[i]["input_ids"]))
 
         # safety: assert we never overflow
         if len(ids) > max_len:
             raise ValueError(f"Packed length {len(ids)} > max_len {max_len}")
 
-        return torch.stack(ids), torch.stack(lbl), torch.stack(am), ims
+        return torch.stack(ids), torch.stack(lbl), torch.stack(am), ims, torch.tensor(doc, dtype=torch.long)

@@ -30,4 +30,4 @@ eval/h200/
 *.arrow
 /shards/*
 *.png
-plots*/
+plots*/slurm/

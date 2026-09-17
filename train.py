@@ -297,7 +297,61 @@ def get_lr(it, max_lr, max_steps):
     return min_lr + coeff * (max_lr - min_lr)
 
 def train(train_cfg, vlm_cfg):
+<<<<<<< HEAD
     train_loader, val_loader, iter_train_loader, iter_val_loader = get_dataloaders(train_cfg, vlm_cfg)
+=======
+    if vlm_cfg.lm_attn_packing_impl == 'flex_document_causal' and train_cfg.compile:
+        # Confirmed by direct testing: flex_document_causal's internal torch.compile(flex_attention)/
+        # torch.compile(create_block_mask) calls (models/language_model.py) produce genuinely wrong
+        # (cross-document-leaking) output when nested inside this function's own whole-model
+        # torch.compile(model) below -- unlike 'dense_block_diagonal', which is compile-safe (verified
+        # byte-identical to eager). Not yet root-caused / fixed, so refuse this combination outright
+        # rather than silently train with corrupted masking.
+        raise ValueError(
+            "lm_attn_packing_impl='flex_document_causal' is not supported together with "
+            "train_cfg.compile=True (verified to silently break cross-document masking under the "
+            "outer torch.compile(model)). Use lm_attn_packing_impl='dense_block_diagonal' with "
+            "--compile, or drop --compile to use flex_document_causal."
+        )
+
+    device = (
+        torch.device("cuda") if torch.cuda.is_available()
+        else torch.device("mps") if hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
+        else torch.device("cpu")
+    )
+    if device.type == "mps":
+        torch.backends.mps.enable_fallback_to_cpu = True
+        torch.mps.empty_cache()
+
+    # Crash-resume detection: must happen before get_dataloaders(), since a resumed
+    # run needs its RNG state restored (it seeds the DataLoader generator) and its
+    # vlm_cfg overridden from the checkpoint (get_dataloaders builds the
+    # tokenizer/image-processor from vlm_cfg before the model is ever loaded, so a
+    # stale/different vlm_cfg here would silently mismatch dataloader and model).
+    resume_dir = checkpointing.get_resume_dir(train_cfg, vlm_cfg)
+    resuming = train_cfg.auto_resume and checkpointing.find_resumable_checkpoint(resume_dir, get_world_size())
+
+    resume_trainer_state = None
+    resume_rank_state = None
+    wandb_run_id = None
+    if resuming:
+        resume_trainer_state = checkpointing.load_trainer_state(resume_dir, device)
+        checkpointing.validate_resume_compatibility(resume_trainer_state, train_cfg, get_world_size())
+        resume_rank_state = checkpointing.load_rank_state(resume_dir, get_rank(), device)
+        checkpointing.restore_rng_state(resume_rank_state, device)
+
+        vlm_cfg = config.VLMConfig(**resume_trainer_state["vlm_cfg"])
+        train_cfg.resume_from_vlm_checkpoint = True
+        vlm_cfg.vlm_checkpoint_path = resume_dir
+        wandb_run_id = resume_trainer_state["wandb_run_id"]
+
+        if is_master():
+            print(f"Auto-resuming from {resume_dir} (step {resume_trainer_state['global_step']})")
+
+    train_loader, val_loader, iter_train_loader, iter_val_loader, g = get_dataloaders(
+        train_cfg, vlm_cfg, resume_rank_state=resume_rank_state
+    )
+>>>>>>> cbcce4b (packed sequence attention with correctness tests and benchmarks)
 
     if is_dist():
         print("Rank", get_rank(), "Waiting for all workers to get dataloaders...")
@@ -399,6 +453,7 @@ def train(train_cfg, vlm_cfg):
     epoch = 0
     overall_peak_mem_allocated_gib = 0.0
     logged_tokens_per_second = []
+    stats_history = []  # one entry per stats_log_interval, for callers that want warmup-trimmed stats
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
     
@@ -428,6 +483,7 @@ def train(train_cfg, vlm_cfg):
             input_ids = batch["input_ids"].to(device)
             labels = batch["labels"].to(device)
             attention_mask = batch["attention_mask"].to(device)
+            doc_id = batch["doc_id"].to(device)
             data_load_time = time.time() - data_load_start
 
             # When using DDP with gradient accumulation,
@@ -447,7 +503,7 @@ def train(train_cfg, vlm_cfg):
             )
             with autocast_context:
                 with context:
-                    _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels)
+                    _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels, doc_id=doc_id)
 
             if train_cfg.gradient_accumulation_steps > 1:
                 loss = loss / train_cfg.gradient_accumulation_steps
@@ -516,9 +572,10 @@ def train(train_cfg, vlm_cfg):
                         input_ids = batch["input_ids"].to(device)
                         labels = batch["labels"].to(device)
                         attention_mask = batch["attention_mask"].to(device)
+                        doc_id = batch["doc_id"].to(device)
 
                         with autocast_context:
-                            _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels)
+                            _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels, doc_id=doc_id)
 
                         total_val_loss += loss.item()
                         val_batches += 1
@@ -586,6 +643,7 @@ def train(train_cfg, vlm_cfg):
                     overall_peak_mem_allocated_gib = max(overall_peak_mem_allocated_gib, stats['peak_mem_allocated_gib'])
                     torch.cuda.reset_peak_memory_stats()
                 logged_tokens_per_second.append(stats['avg_tokens_per_second'])
+                stats_history.append({**stats, 'batch_loss': batch_loss, 'global_step': global_step})
 
                 if is_master():
                     print(f"Step: {global_step}, Loss: {batch_loss:.4f}, Tokens/s: {stats['avg_tokens_per_second']:.0f}, "
@@ -700,6 +758,18 @@ def train(train_cfg, vlm_cfg):
                 run.summary["mean_tokens_per_second"] = mean(logged_tokens_per_second)
             run.finish()
 
+        return {
+            "run_name": run_name,
+            "global_step": global_step,
+            "avg_epoch_time": avg_epoch_time,
+            "total_training_time": total_training_time,
+            "avg_time_per_sample": avg_time_per_sample,
+            "overall_peak_mem_allocated_gib": overall_peak_mem_allocated_gib,
+            "best_val_loss": best_val_loss,
+            "mean_tokens_per_second": mean(logged_tokens_per_second) if logged_tokens_per_second else None,
+            "stats_history": stats_history,
+        }
+
 def main():
     global PG_CPU
     parser = argparse.ArgumentParser()
@@ -722,6 +792,8 @@ def main():
     parser.add_argument('--formatting_min_rating', type=int, help='Minimum formatting rating of images per sample')
     parser.add_argument('--lm_model_type', type=str, help='Language backbone, e.g. HuggingFaceTB/SmolLM2-135M for the ~230M VLM')
     parser.add_argument('--loss_impl', type=str, choices=['full', 'gather', 'chunked'], help='Training loss path (see VLMConfig.lm_loss_impl)')
+    parser.add_argument('--attn_packing_impl', type=str, choices=['none', 'dense_block_diagonal', 'flex_document_causal'], help='Cross-sample attention masking for packed training rows (see VLMConfig.lm_attn_packing_impl)')
+    parser.add_argument('--attn_flex_block_size', type=int, help='flex_attention create_block_mask BLOCK_SIZE (see VLMConfig.lm_attn_flex_block_size)')
     parser.add_argument('--batch_size', type=int, help='Micro-batch size per GPU')
     parser.add_argument('--gradient_accumulation_steps', type=int, help='Micro-batches per optimizer step')
     parser.add_argument('--max_training_steps', type=int, help='Optimizer steps (also sets the LR schedule length)')
@@ -776,6 +848,10 @@ def main():
         vlm_cfg.lm_model_type = args.lm_model_type
     if args.loss_impl is not None:
         vlm_cfg.lm_loss_impl = args.loss_impl
+    if args.attn_packing_impl is not None:
+        vlm_cfg.lm_attn_packing_impl = args.attn_packing_impl
+    if args.attn_flex_block_size is not None:
+        vlm_cfg.lm_attn_flex_block_size = args.attn_flex_block_size
     if args.batch_size is not None:
         train_cfg.batch_size = args.batch_size
     if args.gradient_accumulation_steps is not None:

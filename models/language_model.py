@@ -1,7 +1,97 @@
 import math
+import warnings
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+
+# --------------------------------------------------------------------------------------------- #
+# Cross-sample attention masking for packed training rows (VLMConfig.lm_attn_packing_impl).
+# ConstantLengthDataset (data/advanced_datasets.py) packs several unrelated VQA samples into one
+# row to fill lm_max_length; doc_id [B, T] (long, -1 for padding) marks which packed sub-sample
+# each position belongs to. See eval/benchmark_attn_packing.py for the isolated-core benchmark
+# these two implementations were ported from.
+# --------------------------------------------------------------------------------------------- #
+
+def _compute_reset_position_ids(doc_id: torch.Tensor) -> torch.Tensor:
+    """RoPE position ids that reset to 0 at every doc_id boundary (a boundary = doc_id differs
+    from the previous position's; position 0 is always a boundary), instead of running
+    continuously across a packed row. Vectorized (no Python loop over B) since this sits on the
+    hot compiled training path. Padded positions (doc_id == -1, constant across the whole
+    left-padded prefix) are treated as one trailing "document" -- harmless, since they're already
+    excluded from attention via the padding mask regardless of their position id."""
+    B, T = doc_id.shape
+    idx = torch.arange(T, device=doc_id.device).unsqueeze(0).expand(B, -1)
+    is_boundary = torch.ones_like(doc_id, dtype=torch.bool)
+    is_boundary[:, 1:] = doc_id[:, 1:] != doc_id[:, :-1]
+    boundary_idx = torch.where(is_boundary, idx, torch.zeros_like(idx))
+    return idx - torch.cummax(boundary_idx, dim=1).values
+
+
+# Lazy module-level singletons: LanguageModel has lm_n_blocks (e.g. 32) separate
+# LanguageModelGroupedQueryAttention instances: compiling once per instance would mean N times the
+# one-time ~1.4-1.7s torch.compile cost and N times the dynamo recompile-limit budget instead of
+# once. Built the first time 'flex_document_causal' is actually selected, at model-construction
+# time (before train.py's optional whole-model torch.compile(model) ever wraps anything) -- so
+# LanguageModelGroupedQueryAttention.forward only ever CALLS an already-built compiled callable,
+# never constructs one from inside a traced region.
+_compiled_flex_attention = None
+_compiled_create_block_mask = None
+# Block size in effect the first time the singletons above were actually built in this process.
+# Not used to key/rebuild the singletons themselves (they stay process-wide and unkeyed by
+# design, see comment above) -- only to warn, once per distinct mismatch, if a later
+# flex_document_causal LanguageModelGroupedQueryAttention.__init__ (below) is constructed with a
+# different lm_attn_flex_block_size in the same process.
+_flex_block_size_seen = None
+
+
+def _get_compiled_flex_attention():
+    global _compiled_flex_attention
+    if _compiled_flex_attention is None:
+        from torch.nn.attention.flex_attention import flex_attention
+        _compiled_flex_attention = torch.compile(flex_attention, dynamic=False)
+    return _compiled_flex_attention
+
+
+def _get_compiled_create_block_mask():
+    global _compiled_create_block_mask
+    if _compiled_create_block_mask is None:
+        from torch.nn.attention.flex_attention import create_block_mask
+        _compiled_create_block_mask = torch.compile(create_block_mask, dynamic=False)
+    return _compiled_create_block_mask
+
+
+def _flex_causal_mask_mod(b, h, q_idx, kv_idx):
+    return q_idx >= kv_idx
+
+
+def _flex_document_mask_mod(doc_id):
+    def document_mask_mod(b, h, q_idx, kv_idx):
+        return doc_id[b, q_idx] == doc_id[b, kv_idx]
+    return document_mask_mod
+
+
+def _flex_padding_mask_mod(attention_mask):
+    def padding_mask_mod(b, h, q_idx, kv_idx):
+        return attention_mask[b, kv_idx] != 0
+    return padding_mask_mod
+
+
+def _build_flex_block_mask(doc_id: torch.Tensor, attention_mask, seq_length: int, device, block_size: int):
+    """attention_mask is passed explicitly (not left to doc_id's -1 padding sentinel alone) so
+    correctness doesn't depend on an implicit invariant between two independently-maintained
+    tensors -- mirrors how the 'none'/dense_block_diagonal paths derive padding directly from
+    attention_mask too."""
+    from torch.nn.attention.flex_attention import and_masks
+    mask_mods = [_flex_causal_mask_mod, _flex_document_mask_mod(doc_id)]
+    if attention_mask is not None:
+        mask_mods.append(_flex_padding_mask_mod(attention_mask))
+    mask_mod = and_masks(*mask_mods)
+    return _get_compiled_create_block_mask()(
+        mask_mod, B=doc_id.size(0), H=None, Q_LEN=seq_length, KV_LEN=seq_length,
+        device=device, BLOCK_SIZE=block_size,
+    )
+
 
 # https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L69
 class RMSNorm(nn.Module):
@@ -204,7 +294,44 @@ class LanguageModelGroupedQueryAttention(nn.Module):
         if not self.sdpa:
             print("Warning: scaled dot product attention not available, using standard attention in LM.")
 
-    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask=None, block_kv_cache=None) -> tuple[torch.Tensor, dict]:
+        # Cross-sample attention masking for packed training rows (see module-level helpers above).
+        self.packing_impl = getattr(cfg, 'lm_attn_packing_impl', 'none')
+        self.flex_block_size = getattr(cfg, 'lm_attn_flex_block_size', 128)
+        if self.packing_impl not in ('none', 'dense_block_diagonal', 'flex_document_causal'):
+            raise ValueError(f"Unknown lm_attn_packing_impl: {self.packing_impl!r}")
+        if self.packing_impl == 'flex_document_causal':
+            # Warn (once per distinct mismatch -- see module-level _flex_block_size_seen comment)
+            # if a later flex_document_causal model in this process uses a different
+            # lm_attn_flex_block_size than whatever value the singletons below were first built
+            # under. Not a hard error: torch.compile(..., dynamic=False) guards/recompiles
+            # create_block_mask on a new BLOCK_SIZE rather than silently reusing stale behavior,
+            # so this is not a known correctness bug -- just untested (no test in this repo varies
+            # lm_attn_flex_block_size across models built in one process).
+            global _flex_block_size_seen
+            if _flex_block_size_seen is None:
+                _flex_block_size_seen = self.flex_block_size
+            elif _flex_block_size_seen != self.flex_block_size:
+                warnings.warn(
+                    "models/language_model.py:30-54: the process-wide compiled flex_attention/"
+                    "create_block_mask singletons (_compiled_flex_attention/_compiled_create_block_mask) "
+                    f"were first built with lm_attn_flex_block_size={_flex_block_size_seen}, but this "
+                    "LanguageModelGroupedQueryAttention (lm_attn_packing_impl='flex_document_causal') is "
+                    f"being constructed with lm_attn_flex_block_size={self.flex_block_size} in the same "
+                    "process. These singletons are not keyed by block size, so torch.compile(dynamic=False) "
+                    "will guard/recompile create_block_mask for the new BLOCK_SIZE rather than reuse stale "
+                    "behavior -- not known to be incorrect, but untested and adds recompile overhead plus "
+                    "unbounded Dynamo guard-cache growth. If you need multiple lm_attn_flex_block_size "
+                    "values, run each in a separate process.",
+                    stacklevel=2,
+                )
+            # Force the compiled singletons to build now, at model-construction time (before the
+            # optional whole-model torch.compile(model) in train.py ever wraps this instance) --
+            # never lazily on first forward(), which could happen from inside an already-compiled
+            # outer graph. See the module-level getters' docstrings.
+            _get_compiled_flex_attention()
+            _get_compiled_create_block_mask()
+
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask=None, block_kv_cache=None, doc_id: torch.Tensor=None, packing_mask=None) -> tuple[torch.Tensor, dict]:
         """
         Forward pass for grouped query attention.
 
@@ -218,6 +345,12 @@ class LanguageModelGroupedQueryAttention(nn.Module):
             attention_mask (Tensor, optional): Attention mask tensor of shape (B, total_kv_length),
                                                with 1 for tokens to attend to and 0 for padding.
             block_kv_cache (dict, optional): Cache dict with 'key' and 'value' tensors for autoregressive decoding.
+            doc_id (Tensor, optional): Shape (B, T_curr), long, which packed sub-sample each position
+                belongs to (-1 for padding). Only used for full-prefill training/val (never with
+                block_kv_cache); None preserves today's plain causal+padding behavior exactly.
+            packing_mask (optional): Precomputed flex_attention BlockMask (built once per
+                LanguageModel.forward call, not per block) when self.packing_impl ==
+                'flex_document_causal'; if None, this method builds one itself as a fallback.
 
         Returns:
             tuple[Tensor, dict]:
@@ -267,7 +400,48 @@ class LanguageModelGroupedQueryAttention(nn.Module):
             additive_attn_mask = (1.0 - mask_for_keys.unsqueeze(1).unsqueeze(2).float()) * torch.finfo(q.dtype).min
             # This additive_attn_mask shape is [B, 1, 1, T_kv]
 
-        if self.sdpa and x.device.type != 'mps':
+        if doc_id is not None and self.packing_impl != 'none':
+            # Cross-sample attention masking for a packed training row -- doc_id[b,t] is which
+            # packed sub-sample position t belongs to (-1 for padding); positions from different
+            # sub-samples must never attend to each other regardless of causal ordering.
+            if self.packing_impl == 'dense_block_diagonal':
+                # Molmo2-style fix (ported from eval/benchmark_attn_packing.py's
+                # dense_block_diagonal_sdpa_core; validated against a real Ai2 Molmo2 checkout,
+                # /home/asrinivasan/vlm_gen/molmo2/olmo/models/molmo2/molmo2.py:682-698): AND
+                # doc_id[q]==doc_id[kv] into the same dense causal+padding mask the 'none' path
+                # below builds. No compute saved (still O(T_curr*T_kv)), but the mask itself costs
+                # almost nothing extra to build fresh every step.
+                causal_mask_val = torch.tril(torch.ones(T_curr, T_kv, device=x.device, dtype=torch.bool)).view(1, 1, T_curr, T_kv)
+                same_doc = (doc_id[:, :T_curr].unsqueeze(2) == doc_id[:, :T_kv].unsqueeze(1)).unsqueeze(1)  # [B,1,T_curr,T_kv]
+                allowed = causal_mask_val & same_doc
+                if attention_mask is not None:
+                    pad_ok = (attention_mask[:, :T_kv] != 0).unsqueeze(1).unsqueeze(2)  # [B,1,1,T_kv]
+                    allowed = allowed & pad_ok
+                additive_bias = torch.zeros_like(allowed, dtype=q.dtype).masked_fill(~allowed, torch.finfo(q.dtype).min)
+
+                if self.sdpa and x.device.type != 'mps':
+                    y = torch.nn.functional.scaled_dot_product_attention(
+                        q, k_exp, v_exp,
+                        attn_mask=additive_bias,
+                        dropout_p=self.dropout if self.training else 0.0,
+                        is_causal=False,
+                    )
+                else:
+                    # Manual fallback (MPS / no-SDPA installs) -- mechanical extension of the
+                    # 'none' path's manual branch below, so the bug doesn't silently stay live here.
+                    attn = torch.matmul(q, k_exp.transpose(2, 3)) / math.sqrt(self.head_dim)
+                    attn = attn + additive_bias
+                    attn = F.softmax(attn, dim=-1)
+                    attn = self.attn_dropout(attn)
+                    y = attn @ v_exp
+            else:  # 'flex_document_causal'
+                block_mask = packing_mask if packing_mask is not None else _build_flex_block_mask(
+                    doc_id, attention_mask, T_curr, x.device, self.flex_block_size
+                )
+                # Raw (pre-repeat_interleave) k, v -- enable_gqa handles grouped-query expansion
+                # natively, so this path skips building k_exp/v_exp entirely.
+                y = _get_compiled_flex_attention()(q, k, v, block_mask=block_mask, enable_gqa=True)
+        elif self.sdpa and x.device.type != 'mps':
             # During decode, no additional masking needed as [1, T_kv] is naturally causal
             is_causal = (T_curr == T_kv and T_curr > 1)
             sdpa_attn_mask = additive_attn_mask
@@ -295,12 +469,12 @@ class LanguageModelGroupedQueryAttention(nn.Module):
 
             if additive_attn_mask is not None: # Additive padding mask
                 # additive_attn_mask is [B,1,1,T_kv], needs to be broadcast to [B, n_heads, T_curr, T_kv]
-                attn = attn + additive_attn_mask 
+                attn = attn + additive_attn_mask
 
             attn = F.softmax(attn, dim=-1)
             attn = self.attn_dropout(attn)
             y = attn @ v_exp
-            
+
         y = y.transpose(1, 2).contiguous().view(B, T_curr, C)
         y = self.out_proj(y)
         y = self.resid_dropout(y)
@@ -365,7 +539,7 @@ class LanguageModelBlock(nn.Module):
         self.norm1 = RMSNorm(cfg) # Input Norm
         self.norm2 = RMSNorm(cfg) # Post Attention Norm
     
-    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask: torch.Tensor=None, block_kv_cache: dict=None):
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, attention_mask: torch.Tensor=None, block_kv_cache: dict=None, doc_id: torch.Tensor=None, packing_mask=None):
         """
         Forward pass of the Transformer block.
 
@@ -378,6 +552,10 @@ class LanguageModelBlock(nn.Module):
                 with 1 indicating tokens to attend to and 0 for padding tokens.
             block_kv_cache (dict, optional): Key-value cache dict for cached keys and values
                 during decoding. If None, no cache is used.
+            doc_id (Tensor, optional): Cross-sample attention masking for packed rows; see
+                LanguageModelGroupedQueryAttention.forward. Passed straight through to self.attn.
+            packing_mask (optional): Precomputed flex_attention BlockMask; see
+                LanguageModelGroupedQueryAttention.forward. Passed straight through to self.attn.
 
         Returns:
             Tuple[Tensor, dict]: Output tensor after the block (same shape as input),
@@ -385,7 +563,7 @@ class LanguageModelBlock(nn.Module):
         """
         res = x
         x = self.norm1(x)
-        x, block_kv_cache = self.attn(x, cos, sin, attention_mask, block_kv_cache)
+        x, block_kv_cache = self.attn(x, cos, sin, attention_mask, block_kv_cache, doc_id, packing_mask)
         x = res + x
 
         res = x
@@ -402,6 +580,12 @@ class LanguageModel(nn.Module):
         self.cfg = cfg
         self.lm_use_tokens = cfg.lm_use_tokens
         self.lm_tie_weights = cfg.lm_tie_weights
+        # Cached at construction time, like LanguageModelGroupedQueryAttention.packing_impl below
+        # (not read live off self.cfg each forward() call, unlike e.g. lm_loss_impl) -- this is
+        # architectural, not a per-call switch: mutating cfg.lm_attn_packing_impl on an
+        # already-built model would otherwise desync this cache from the attention modules' own
+        # cached copies, since each block's LanguageModelGroupedQueryAttention caches it too.
+        self.packing_impl = getattr(cfg, 'lm_attn_packing_impl', 'none')
 
         self.token_embedding = nn.Embedding(cfg.lm_vocab_size, cfg.lm_hidden_dim)
         self.rotary_embd = RotaryEmbedding(cfg)
@@ -425,7 +609,7 @@ class LanguageModel(nn.Module):
         elif isinstance(module, RMSNorm):
             module.weight.data.fill_(1.0)
 
-    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor=None, kv_cache: list[dict]=None, start_pos: int=0):
+    def forward(self, x: torch.Tensor, attention_mask: torch.Tensor=None, kv_cache: list[dict]=None, start_pos: int=0, doc_id: torch.Tensor=None):
         """
         Performs a forward pass through the language model.
 
@@ -442,6 +626,10 @@ class LanguageModel(nn.Module):
             start_pos (int, optional): The starting position index for the current input
                 sequence. Used to compute rotary positional embeddings correctly,
                 especially for cached sequences during generation. Default is 0.
+            doc_id (Tensor, optional): Shape (batch_size, sequence_length), long, which packed
+                sub-sample each position belongs to (-1 for padding) -- see
+                LanguageModelGroupedQueryAttention.forward. Only for full-prefill training/val
+                (start_pos must be 0); None preserves today's plain causal+padding behavior.
 
         Returns:
             Tuple:
@@ -468,9 +656,24 @@ class LanguageModel(nn.Module):
 
         # T_curr is the length of the current input sequence
         B, T_curr, _ = x.size()
-        
+
         # Create position_ids for the current sequence based on start_pos
         current_position_ids = torch.arange(start_pos, start_pos + T_curr, device=x.device).unsqueeze(0).expand(B, -1)
+        packing_mask = None
+        # Gated on lm_attn_packing_impl, not just "doc_id is not None": callers (train.py) always
+        # pass doc_id once packing is wired into the data pipeline, regardless of which impl is
+        # selected -- with lm_attn_packing_impl=='none' (the default), doc_id must be ignored
+        # entirely so behavior stays byte-identical to before this feature existed.
+        use_packing = doc_id is not None and self.packing_impl != 'none'
+        if use_packing:
+            # Packing is only used for full-prefill training/val, never incremental decode.
+            assert start_pos == 0, "doc_id (packed-row masking) requires start_pos=0 (full prefill)"
+            current_position_ids = _compute_reset_position_ids(doc_id)
+            if self.packing_impl == 'flex_document_causal':
+                # Built once per forward call (not once per block) -- the mask is identical for
+                # every block, so rebuilding it lm_n_blocks times would multiply the (compiled,
+                # ~0.3ms) create_block_mask cost for no benefit.
+                packing_mask = _build_flex_block_mask(doc_id, attention_mask, T_curr, x.device, self.cfg.lm_attn_flex_block_size)
         cos, sin = self.rotary_embd(current_position_ids) # Get rotary position embeddings for current tokens
 
         # Initialize new KV cache if none provided
@@ -478,7 +681,7 @@ class LanguageModel(nn.Module):
             kv_cache = [None] * len(self.blocks)
 
         for i, block in enumerate(self.blocks):
-            x, kv_cache[i] = block(x, cos, sin, attention_mask, kv_cache[i])
+            x, kv_cache[i] = block(x, cos, sin, attention_mask, kv_cache[i], doc_id if use_packing else None, packing_mask)
 
         x = self.norm(x)
 
