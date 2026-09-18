@@ -78,7 +78,9 @@ python -m pytest tests/test_vision_language_model_loss.py -v                    
 ```
 
 Also useful:
-- `numactl` (`apt-get install -y numactl`), needed by `experiments/loss_optimization/scripts/run_train_e2e.sh`.
+- `numactl` (`apt-get install -y numactl`), for pinning a run to one NUMA node by hand. Optional; nothing in the repo requires it.
+
+Benchmarks and their committed results live under [`eval/h100/`](eval/h100/): cross-document attention masking ([`attn_packing.md`](eval/h100/attn_packing.md)) and the training loss path ([`loss_gather_ab.md`](eval/h100/loss_gather_ab.md)). Each write-up names the script that reproduces it.
 - `HF_TOKEN`, to avoid Hub rate limits when streaming FineVision.
 
 ## Training
