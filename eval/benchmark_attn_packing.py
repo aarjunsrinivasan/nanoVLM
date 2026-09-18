@@ -32,8 +32,8 @@ Run as a module from the repo root (eval/ is a package), pinned to a single idle
 repo's CLAUDE.md GPU rules (check `nvidia-smi` first):
     CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_packing --batch_sizes 2 --num_iters 5 --num_warmup 2
 
-A larger sweep (more batch sizes / block sizes) is a separate, heavier job -- submit via
-`sbatch slurm/benchmark_attn_packing.slurm <extra args>` rather than running it interactively.
+A larger sweep (more batch sizes / block sizes) is a separate, heavier job -- run it detached
+(`nohup`/`tmux`) rather than in an interactive shell you might lose.
 
 If timing looks off for the flex variants, `TORCH_LOGS=recompiles python -m eval.benchmark_attn_packing ...`
 will show whether a shape/guard change is forcing an unexpected recompile mid-sweep.
@@ -200,8 +200,8 @@ def dense_sdpa_core(q, k, v, n_kv_groups, pad_mask, dropout_p):
 
 
 def dense_block_diagonal_sdpa_core(q, k, v, n_kv_groups, doc_id, pad_mask, dropout_p):
-    """Molmo2-style fix (Ai2's production multimodal LLM, local checkout at
-    /home/asrinivasan/vlm_gen/molmo2 -- olmo/models/molmo2/molmo2.py:682-698): AND one extra
+    """Molmo2-style fix (Ai2's production multimodal LLM, checked against a local checkout --
+    olmo/models/molmo2/molmo2.py:682-698): AND one extra
     broadcast doc-id-equality compare into the same dense causal+padding mask
     dense_sdpa_core already builds, fed to plain SDPA. No block-sparse kernel, so this pays the
     same full O(T^2) attention compute as today's buggy path (no compute saved), but unlike
@@ -398,7 +398,7 @@ def main():
     parser.add_argument("--verify", dest="verify", action="store_true", default=True)
     parser.add_argument("--skip_verify", dest="verify", action="store_false")
     parser.add_argument("--verify_only", action="store_true", help="Run only the correctness self-check and exit (no GPU sweep).")
-    parser.add_argument("--results_file", default="eval/h200/benchmark_attn_packing_results.json",
+    parser.add_argument("--results_file", default="eval/h100/benchmark_attn_packing_results.json",
                          help="Results are grouped under eval/<gpu>/ by the hardware they were measured on.")
     args = parser.parse_args()
 

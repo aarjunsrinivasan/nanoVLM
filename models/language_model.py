@@ -407,7 +407,7 @@ class LanguageModelGroupedQueryAttention(nn.Module):
             if self.packing_impl == 'dense_block_diagonal':
                 # Molmo2-style fix (ported from eval/benchmark_attn_packing.py's
                 # dense_block_diagonal_sdpa_core; validated against a real Ai2 Molmo2 checkout,
-                # /home/asrinivasan/vlm_gen/molmo2/olmo/models/molmo2/molmo2.py:682-698): AND
+                # olmo/models/molmo2/molmo2.py:682-698): AND
                 # doc_id[q]==doc_id[kv] into the same dense causal+padding mask the 'none' path
                 # below builds. No compute saved (still O(T_curr*T_kv)), but the mask itself costs
                 # almost nothing extra to build fresh every step.

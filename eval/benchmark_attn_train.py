@@ -8,16 +8,16 @@ eager by default) plus optional compiled arms (--compile_variants, e.g. 'dense_b
 with torch.compile -- 'flex_document_causal' can't compile, see train.py's own hard refusal),
 sequentially on one GPU, and compares real tokens/sec, peak memory, and loss.
 
-wandb is not configured on this machine, so results are local-only: printed as a table and saved
-as JSON under eval/<gpu>/.
+Results are local-only regardless of wandb: printed as a table and saved as JSON under
+eval/<gpu>/, grouped by the hardware they were measured on.
 
 Run as a module from the repo root, pinned to a single idle GPU per this repo's CLAUDE.md GPU
 rules (check `nvidia-smi` first):
     CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_train
 
 A full run downloads/caches real dataset shards and trains for --max_training_steps per arm
-(minutes, not seconds); submit via `sbatch slurm/benchmark_attn_train.slurm <extra args>` rather
-than running interactively. Do a short dry run first, e.g.:
+(minutes, not seconds); run it detached (`nohup`/`tmux`) rather than in an interactive shell you
+might lose. Do a short dry run first, e.g.:
     CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_train \
         --max_training_steps 20 --stats_log_interval 5 --compile_warmup_intervals 1 \
         --variants none dense_block_diagonal --compile_variants dense_block_diagonal
@@ -26,7 +26,7 @@ To add only the compiled arm to a run that already has saved eager results (skip
 eager arms, and don't clobber their results file):
     CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_train --variants \
         --compile_variants dense_block_diagonal \
-        --results_file eval/h200/benchmark_attn_train_compile_results.json
+        --results_file eval/h100/benchmark_attn_train_compile_results.json
 
 Caveat: train.py and data/advanced_datasets.py seed Python's global random/torch RNGs once at
 import time, not per train() call. With --num_workers 0, the packing dataset's shuffle state
@@ -41,6 +41,7 @@ import argparse
 import dataclasses
 import gc
 import json
+import math
 import os
 import time
 from statistics import mean, median
@@ -163,11 +164,35 @@ def summarize_variant(label, summary, wall_clock_s, warmup_intervals):
     }
 
 
-def build_comparison_table(rows):
+def json_safe(obj):
+    """Replaces non-finite floats with None so the results file is valid, portable JSON.
+
+    Python's json writes float('inf') as the bare token `Infinity`, which is not in the JSON spec
+    and is rejected by strict parsers (jq, Go, most JS tooling). These sweeps hit it every run:
+    `eval_in_epochs=False` means no validation ever runs, so train()'s `best_val_loss` stays at its
+    float('inf') initial value and lands in the summary dict. None round-trips as null and reads
+    correctly as "not measured".
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [json_safe(v) for v in obj]
+    return obj
+
+
+def build_comparison_table(rows, baseline="none"):
+    """Ranked table, fastest first, with a speedup column relative to `baseline`.
+
+    `baseline` is the arm the comparison is against -- 'none' (the leaky status quo) for the
+    packing sweep, 'full' for eval/run_loss_ab.py's loss sweep. The column is named after it,
+    so the two sweeps' result JSONs stay self-describing.
+    """
     df = pd.DataFrame(rows).sort_values("mean_tokens_per_second", ascending=False).reset_index(drop=True)
-    if "none" in df["variant"].values:
-        baseline = df.loc[df["variant"] == "none", "mean_tokens_per_second"].iloc[0]
-        df["speedup_vs_none"] = df["mean_tokens_per_second"] / baseline
+    if baseline in df["variant"].values:
+        baseline_tps = df.loc[df["variant"] == baseline, "mean_tokens_per_second"].iloc[0]
+        df[f"speedup_vs_{baseline}"] = df["mean_tokens_per_second"] / baseline_tps
     return df
 
 
@@ -214,7 +239,7 @@ def main():
     parser.add_argument("--attn_flex_block_size", type=int, default=None)
     parser.add_argument("--checkpoint_root", type=str, default="checkpoints/benchmark_attn_train",
                          help="Required by VLMConfig, but with eval_in_epochs=False nothing is ever written here.")
-    parser.add_argument("--results_file", type=str, default="eval/h200/benchmark_attn_train_results.json",
+    parser.add_argument("--results_file", type=str, default="eval/h100/benchmark_attn_train_results.json",
                          help="Results are grouped under eval/<gpu>/ by the hardware they were measured on.")
     parser.add_argument("--prime_cache_batches", type=int, default=None,
                          help="Defaults to max_training_steps * gradient_accumulation_steps (one variant's worth of micro-batches).")
@@ -268,7 +293,7 @@ def main():
     }
     os.makedirs(os.path.dirname(args.results_file) or ".", exist_ok=True)
     with open(args.results_file, "w") as f:
-        json.dump(results, f, indent=2, default=str)
+        json.dump(json_safe(results), f, indent=2, default=str)
     print(f"\nSaved results to {args.results_file}")
 
 
