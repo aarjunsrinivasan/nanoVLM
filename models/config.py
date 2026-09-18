@@ -36,10 +36,12 @@ class VLMConfig:
     #   'full'    - head over every position, then cross_entropy with ignore_index (pre-68921a5)
     #   'gather'  - gather positions with targets != -100, then head + cross_entropy
     #   'chunked' - gather, then fp32 chunked F.linear_cross_entropy (never materializes [N, V])
-    # 'gather' is the default: on an H100 it is the fastest of the three and keeps ~95% of 'chunked'
-    # memory saving, with losses identical to 'full'. 'chunked' saves a further ~0.2-0.5 GiB for
-    # ~3-6% throughput, so it is the choice only when memory, not speed, is the binding constraint.
-    # See experiments_h100/loss_gather_ab/.
+    # 'gather' is the default: on an H100 it is 1.24x faster than 'full', cuts peak allocated memory
+    # by 3.57 GiB, and keeps 97% of 'chunked''s memory saving, with losses identical to 'full'.
+    # 'chunked' saves only a further ~0.10 GiB and costs ~21% throughput (likely because its
+    # linear_cross_entropy needs an fp32 input, pushing the vocab projection off bf16 tensor cores),
+    # so it is rarely worth it -- only when that last 0.1 GiB is the binding constraint.
+    # Measured in eval/h100/loss_gather_ab.md (reproduce with eval/run_loss_ab.py).
     lm_loss_impl: str = 'gather'
     # Cross-sample attention masking for packed training rows (ConstantLengthDataset packs several
     # unrelated VQA samples per row to fill lm_max_length; see data/advanced_datasets.py):
