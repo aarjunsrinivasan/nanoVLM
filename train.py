@@ -297,9 +297,6 @@ def get_lr(it, max_lr, max_steps):
     return min_lr + coeff * (max_lr - min_lr)
 
 def train(train_cfg, vlm_cfg):
-<<<<<<< HEAD
-    train_loader, val_loader, iter_train_loader, iter_val_loader = get_dataloaders(train_cfg, vlm_cfg)
-=======
     if vlm_cfg.lm_attn_packing_impl == 'flex_document_causal' and train_cfg.compile:
         # Confirmed by direct testing: flex_document_causal's internal torch.compile(flex_attention)/
         # torch.compile(create_block_mask) calls (models/language_model.py) produce genuinely wrong
@@ -314,44 +311,7 @@ def train(train_cfg, vlm_cfg):
             "--compile, or drop --compile to use flex_document_causal."
         )
 
-    device = (
-        torch.device("cuda") if torch.cuda.is_available()
-        else torch.device("mps") if hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-        else torch.device("cpu")
-    )
-    if device.type == "mps":
-        torch.backends.mps.enable_fallback_to_cpu = True
-        torch.mps.empty_cache()
-
-    # Crash-resume detection: must happen before get_dataloaders(), since a resumed
-    # run needs its RNG state restored (it seeds the DataLoader generator) and its
-    # vlm_cfg overridden from the checkpoint (get_dataloaders builds the
-    # tokenizer/image-processor from vlm_cfg before the model is ever loaded, so a
-    # stale/different vlm_cfg here would silently mismatch dataloader and model).
-    resume_dir = checkpointing.get_resume_dir(train_cfg, vlm_cfg)
-    resuming = train_cfg.auto_resume and checkpointing.find_resumable_checkpoint(resume_dir, get_world_size())
-
-    resume_trainer_state = None
-    resume_rank_state = None
-    wandb_run_id = None
-    if resuming:
-        resume_trainer_state = checkpointing.load_trainer_state(resume_dir, device)
-        checkpointing.validate_resume_compatibility(resume_trainer_state, train_cfg, get_world_size())
-        resume_rank_state = checkpointing.load_rank_state(resume_dir, get_rank(), device)
-        checkpointing.restore_rng_state(resume_rank_state, device)
-
-        vlm_cfg = config.VLMConfig(**resume_trainer_state["vlm_cfg"])
-        train_cfg.resume_from_vlm_checkpoint = True
-        vlm_cfg.vlm_checkpoint_path = resume_dir
-        wandb_run_id = resume_trainer_state["wandb_run_id"]
-
-        if is_master():
-            print(f"Auto-resuming from {resume_dir} (step {resume_trainer_state['global_step']})")
-
-    train_loader, val_loader, iter_train_loader, iter_val_loader, g = get_dataloaders(
-        train_cfg, vlm_cfg, resume_rank_state=resume_rank_state
-    )
->>>>>>> cbcce4b (packed sequence attention with correctness tests and benchmarks)
+    train_loader, val_loader, iter_train_loader, iter_val_loader = get_dataloaders(train_cfg, vlm_cfg)
 
     if is_dist():
         print("Rank", get_rank(), "Waiting for all workers to get dataloaders...")

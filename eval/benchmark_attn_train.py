@@ -75,9 +75,7 @@ def build_base_configs(args):
         prefetch_shards=args.prefetch_shards,
         log_wandb=False,
         use_lmms_eval=False,
-        eval_in_epochs=False,  # both this and save_interval=0 avoid a full val pass / checkpoint
-        save_interval=0,       # write on step 0 of every variant (0 % N == 0 for any N)
-        auto_resume=False,
+        eval_in_epochs=False,  # skips the in-loop val pass and its save_pretrained checkpoint write
     )
     return vlm_cfg, train_cfg
 
@@ -114,12 +112,12 @@ def prime_shard_cache(base_train_cfg, base_vlm_cfg, num_batches):
     if num_batches <= 0:
         return
     print(f"\n--- Priming shard cache: {num_batches} micro-batches (no model, one pass through the loader) ---")
-    train_loader, val_loader, iter_train_loader, iter_val_loader, g = train.get_dataloaders(base_train_cfg, base_vlm_cfg)
+    train_loader, val_loader, iter_train_loader, iter_val_loader = train.get_dataloaders(base_train_cfg, base_vlm_cfg)
     for i in range(num_batches):
         next(iter_train_loader)
         if (i + 1) % 50 == 0:
             print(f"  primed {i + 1}/{num_batches} micro-batches")
-    del train_loader, val_loader, iter_train_loader, iter_val_loader, g
+    del train_loader, val_loader, iter_train_loader, iter_val_loader
     gc.collect()
     print("--- Cache priming done ---\n")
 
@@ -215,7 +213,7 @@ def main():
     parser.add_argument("--vit_model_type", type=str, default=None, help="Override VLMConfig.vit_model_type (default: real siglip2-base-patch16-512).")
     parser.add_argument("--attn_flex_block_size", type=int, default=None)
     parser.add_argument("--checkpoint_root", type=str, default="checkpoints/benchmark_attn_train",
-                         help="Required by VLMConfig/checkpointing, but with save_interval=0 nothing is ever written here.")
+                         help="Required by VLMConfig, but with eval_in_epochs=False nothing is ever written here.")
     parser.add_argument("--results_file", type=str, default="eval/h200/benchmark_attn_train_results.json",
                          help="Results are grouped under eval/<gpu>/ by the hardware they were measured on.")
     parser.add_argument("--prime_cache_batches", type=int, default=None,
