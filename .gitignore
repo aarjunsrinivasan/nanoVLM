@@ -26,8 +26,12 @@ checkpoints/
 notebooks/
 results/
 eval_results*/
-eval/h200/
 *.arrow
 /shards/*
 *.png
 plots*/slurm/
+
+# Committed benchmark results. These are the published record behind the write-ups in
+# eval/h100/*.md, so they are tracked deliberately -- the unanchored *.csv and *.png rules
+# above would otherwise silently swallow any table or plot added alongside them.
+!eval/h100/**
