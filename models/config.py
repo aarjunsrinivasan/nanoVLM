@@ -41,6 +41,29 @@ class VLMConfig:
     # ~3-6% throughput, so it is the choice only when memory, not speed, is the binding constraint.
     # See experiments_h100/loss_gather_ab/.
     lm_loss_impl: str = 'gather'
+    # Cross-sample attention masking for packed training rows (ConstantLengthDataset packs several
+    # unrelated VQA samples per row to fill lm_max_length; see data/advanced_datasets.py):
+    #   'none'                  - no document-boundary awareness: one dense causal+padding mask over
+    #                              the whole packed row. Confirmed bug -- later samples attend into
+    #                              earlier, unrelated samples. Kept as the default so existing/resumed
+    #                              configs don't silently change behavior until this is validated.
+    #   'dense_block_diagonal'  - Molmo2 style - doc_id[q]==doc_id[kv] into the same dense
+    #                              causal+padding mask, plain SDPA. No compute saved (still O(T^2)),
+    #                              zero new deps, zero torch.compile risk.
+    #   'flex_document_causal'  - torch.nn.attention.flex_attention with a compiled document-causal
+    #                              BlockMask. Faster than 'dense_block_diagonal' under eager
+    #                              execution (both flex_attention and create_block_mask are
+    #                              torch.compile'd internally). Also works with
+    #                              TrainConfig.compile=True, where the whole-model torch.compile
+    #                              nests around those inner calls: on torch 2.14 that matches the
+    #                              unpacked reference in forward and gradients at full model scale
+    #                              (tests/test_vision_language_model_packing.py) and is the fastest
+    #                              training configuration measured (eval/h100/attn_packing.md).
+    #                              An earlier train.py refused this combination citing silent
+    #                              cross-document leakage, which no longer reproduces.
+    # See eval/benchmark_attn_packing.py for the isolated-core A/B benchmark these were chosen from.
+    lm_attn_packing_impl: str = 'none'
+    lm_attn_flex_block_size: int = 128  # create_block_mask BLOCK_SIZE, only used by 'flex_document_causal'
     lm_chat_template: str ="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 
     mp_pixel_shuffle_factor: int = 4

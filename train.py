@@ -399,6 +399,7 @@ def train(train_cfg, vlm_cfg):
     epoch = 0
     overall_peak_mem_allocated_gib = 0.0
     logged_tokens_per_second = []
+    stats_history = []  # one entry per stats_log_interval, for callers that want warmup-trimmed stats
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
     
@@ -428,6 +429,7 @@ def train(train_cfg, vlm_cfg):
             input_ids = batch["input_ids"].to(device)
             labels = batch["labels"].to(device)
             attention_mask = batch["attention_mask"].to(device)
+            doc_id = batch["doc_id"].to(device)
             data_load_time = time.time() - data_load_start
 
             # When using DDP with gradient accumulation,
@@ -447,7 +449,7 @@ def train(train_cfg, vlm_cfg):
             )
             with autocast_context:
                 with context:
-                    _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels)
+                    _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels, doc_id=doc_id)
 
             if train_cfg.gradient_accumulation_steps > 1:
                 loss = loss / train_cfg.gradient_accumulation_steps
@@ -516,9 +518,10 @@ def train(train_cfg, vlm_cfg):
                         input_ids = batch["input_ids"].to(device)
                         labels = batch["labels"].to(device)
                         attention_mask = batch["attention_mask"].to(device)
+                        doc_id = batch["doc_id"].to(device)
 
                         with autocast_context:
-                            _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels)
+                            _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels, doc_id=doc_id)
 
                         total_val_loss += loss.item()
                         val_batches += 1
@@ -586,6 +589,7 @@ def train(train_cfg, vlm_cfg):
                     overall_peak_mem_allocated_gib = max(overall_peak_mem_allocated_gib, stats['peak_mem_allocated_gib'])
                     torch.cuda.reset_peak_memory_stats()
                 logged_tokens_per_second.append(stats['avg_tokens_per_second'])
+                stats_history.append({**stats, 'batch_loss': batch_loss, 'global_step': global_step})
 
                 if is_master():
                     print(f"Step: {global_step}, Loss: {batch_loss:.4f}, Tokens/s: {stats['avg_tokens_per_second']:.0f}, "
@@ -700,6 +704,18 @@ def train(train_cfg, vlm_cfg):
                 run.summary["mean_tokens_per_second"] = mean(logged_tokens_per_second)
             run.finish()
 
+        return {
+            "run_name": run_name,
+            "global_step": global_step,
+            "avg_epoch_time": avg_epoch_time,
+            "total_training_time": total_training_time,
+            "avg_time_per_sample": avg_time_per_sample,
+            "overall_peak_mem_allocated_gib": overall_peak_mem_allocated_gib,
+            "best_val_loss": best_val_loss,
+            "mean_tokens_per_second": mean(logged_tokens_per_second) if logged_tokens_per_second else None,
+            "stats_history": stats_history,
+        }
+
 def main():
     global PG_CPU
     parser = argparse.ArgumentParser()
@@ -722,6 +738,8 @@ def main():
     parser.add_argument('--formatting_min_rating', type=int, help='Minimum formatting rating of images per sample')
     parser.add_argument('--lm_model_type', type=str, help='Language backbone, e.g. HuggingFaceTB/SmolLM2-135M for the ~230M VLM')
     parser.add_argument('--loss_impl', type=str, choices=['full', 'gather', 'chunked'], help='Training loss path (see VLMConfig.lm_loss_impl)')
+    parser.add_argument('--attn_packing_impl', type=str, choices=['none', 'dense_block_diagonal', 'flex_document_causal'], help='Cross-sample attention masking for packed training rows (see VLMConfig.lm_attn_packing_impl)')
+    parser.add_argument('--attn_flex_block_size', type=int, help='flex_attention create_block_mask BLOCK_SIZE (see VLMConfig.lm_attn_flex_block_size)')
     parser.add_argument('--batch_size', type=int, help='Micro-batch size per GPU')
     parser.add_argument('--gradient_accumulation_steps', type=int, help='Micro-batches per optimizer step')
     parser.add_argument('--max_training_steps', type=int, help='Optimizer steps (also sets the LR schedule length)')
@@ -776,6 +794,10 @@ def main():
         vlm_cfg.lm_model_type = args.lm_model_type
     if args.loss_impl is not None:
         vlm_cfg.lm_loss_impl = args.loss_impl
+    if args.attn_packing_impl is not None:
+        vlm_cfg.lm_attn_packing_impl = args.attn_packing_impl
+    if args.attn_flex_block_size is not None:
+        vlm_cfg.lm_attn_flex_block_size = args.attn_flex_block_size
     if args.batch_size is not None:
         train_cfg.batch_size = args.batch_size
     if args.gradient_accumulation_steps is not None:
