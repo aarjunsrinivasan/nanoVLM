@@ -171,6 +171,84 @@ class TestVisionLanguageModelPacking(unittest.TestCase):
         )
         self.assertFalse(matches, "'none' should NOT match the unpacked reference (that's the bug); it did.")
 
+    # ----------------------------------------------------------------------------------------- #
+    # The RoPE half of the fix: per-document position reset
+    # ----------------------------------------------------------------------------------------- #
+    # Both packing impls reset RoPE position ids to 0 at every document boundary
+    # (LanguageModel.forward -> _compute_reset_position_ids). The tests above cannot tell whether
+    # that reset happens. RoPE scores depend only on RELATIVE position, so once attention is
+    # confined to one document, a constant per-document offset cancels exactly: continuous
+    # positions plus a correct mask match the unpacked reference to ~1e-6, far inside tolerance.
+    #
+    # The one thing that breaks the cancellation is RoPE's dynamic scaling, which reads the
+    # ABSOLUTE max position (RotaryEmbedding.forward: `if max_seq > self.original_max_seq_len`).
+    # Continuous positions give a packed row a max_seq equal to its whole length, so packing
+    # several short documents can trigger scaling that no single document would -- rescaling
+    # inv_freq for every document in the row. These tests run in exactly that regime: every
+    # document fits under lm_max_position_embeddings, the packed row does not.
+
+    SCALING_MAX_POS = 32
+    SCALING_DOC_LENS = (24, 20, 28)   # each < 32, packed 72 > 32 -> continuous positions scale 2.25x
+
+    def _scaling_regime_worst_diff(self, packing_impl, reset_positions=True):
+        """Max |per-token loss diff| between a packed row and each document run alone, with
+        lm_max_position_embeddings small enough that only a NON-reset packed row triggers RoPE
+        scaling. reset_positions=False swaps in continuous positions (mask unchanged) to model
+        the per-document reset having been removed."""
+        import models.language_model as lm
+
+        cfg = VLMConfig(**{**vars(self.cfg), 'lm_max_position_embeddings': self.SCALING_MAX_POS})
+        torch.manual_seed(0)
+        base = VisionLanguageModel(VLMConfig(**{**vars(cfg), 'lm_attn_packing_impl': 'none'}), load_backbone=False).eval()
+        state = {k: v.detach().clone() for k, v in base.state_dict().items()}
+
+        docs = []
+        for n in self.SCALING_DOC_LENS:
+            ids = torch.randint(0, cfg.lm_vocab_size, (1, n))
+            labels = torch.full((1, n), -100, dtype=torch.long)
+            labels[:, 3:] = torch.randint(0, cfg.lm_vocab_size, (1, n - 3))
+            docs.append((ids, labels))
+
+        packed = VisionLanguageModel(VLMConfig(**{**vars(cfg), 'lm_attn_packing_impl': packing_impl}), load_backbone=False).eval()
+        packed.load_state_dict(state)
+        packed_ids = torch.cat([d[0] for d in docs], dim=1)
+        packed_labels = torch.cat([d[1] for d in docs], dim=1)
+        doc_id = torch.cat([torch.full_like(d[0], k) for k, d in enumerate(docs)], dim=1)
+
+        real_reset = lm._compute_reset_position_ids
+        if not reset_positions:
+            lm._compute_reset_position_ids = lambda d: torch.arange(d.size(1), device=d.device).unsqueeze(0).expand(d.size(0), -1)
+        try:
+            with torch.no_grad():   # forward-only: flex_attention has no CPU backward
+                refs = [self._per_token_loss(base, i, torch.ones_like(i), l, doc_id=None) for i, l in docs]
+                got = self._per_token_loss(packed, packed_ids, torch.ones_like(packed_ids), packed_labels, doc_id=doc_id)
+        finally:
+            lm._compute_reset_position_ids = real_reset
+
+        worst, offset = 0.0, 0
+        for k, n in enumerate(self.SCALING_DOC_LENS):
+            worst = max(worst, (got[:, offset:offset + n] - refs[k]).abs().max().item())
+            offset += n
+        return worst
+
+    def test_rope_reset_keeps_packed_row_out_of_scaling_dense_block_diagonal(self):
+        self.assertLess(self._scaling_regime_worst_diff('dense_block_diagonal'), 1e-4)
+
+    def test_rope_reset_keeps_packed_row_out_of_scaling_flex_document_causal(self):
+        self.assertLess(self._scaling_regime_worst_diff('flex_document_causal'), 1e-4)
+
+    def test_removing_rope_reset_is_detected(self):
+        """Negative control for the two tests above: with the mask still correct but positions
+        left continuous, the packed row must NOT match. Proves those tests actually depend on the
+        reset rather than passing on masking alone -- which is exactly what the non-scaling tests
+        at the top of this file cannot distinguish."""
+        worst = self._scaling_regime_worst_diff('dense_block_diagonal', reset_positions=False)
+        self.assertGreater(
+            worst, 1e-3,
+            f"continuous RoPE positions should trigger scaling and mismatch here (got {worst:.2e}); "
+            f"if this fails, the scaling regime above is no longer being exercised.",
+        )
+
 
 if __name__ == '__main__':
     unittest.main()
