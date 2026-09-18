@@ -116,7 +116,7 @@ class TrainConfig:
     image_correspondence_min_rating: int = 1
     visual_dependency_min_rating: int = 1
     formatting_min_rating: int = 1
-    wandb_entity: str = "HuggingFace" # Indicate the entity to log to in wandb
+    wandb_entity: str = "arjunsrinivasan" # Indicate the entity to log to in wandb (this fork's owner; upstream defaults to "HuggingFace", which only HF staff can write to)
     wandb_project: str = "nanoVLM"
     wandb_group: str = None # One group per experiment (e.g. an A/B sweep), so its runs compare side by side
     wandb_tags: tuple[str, ...] = ()
