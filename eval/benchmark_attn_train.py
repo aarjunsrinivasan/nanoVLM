@@ -5,7 +5,7 @@ math on random tensors), this script runs the actual train.py training loop -- r
 (SmolLM2-360M-Instruct + siglip2-base-patch16-512 by default), real streamed FineVision dataset --
 once per lm_attn_packing_impl value ('none', 'dense_block_diagonal', 'flex_document_causal', all
 eager by default) plus optional compiled arms (--compile_variants, e.g. 'dense_block_diagonal'
-with torch.compile -- 'flex_document_causal' can't compile, see train.py's own hard refusal),
+with torch.compile; any packing impl can be compiled),
 sequentially on one GPU, and compares real tokens/sec, peak memory, and loss.
 
 Results are local-only regardless of wandb: printed as a table and saved as JSON under
@@ -90,15 +90,6 @@ def arm_label(packing_impl, use_compile):
 
 
 def build_arm_configs(base_vlm_cfg, base_train_cfg, packing_impl, use_compile, checkpoint_root):
-    if use_compile and packing_impl == 'flex_document_causal':
-        # Mirrors train.py's own hard refusal (flex_document_causal's internal torch.compile calls
-        # produce cross-document-leaking output when nested inside an outer torch.compile(model)) --
-        # fail here, before starting any run, rather than deep inside train.train() after other
-        # arms may have already completed.
-        raise ValueError(
-            "flex_document_causal cannot be combined with compile=True (train.py hard-rejects "
-            "this combination). Pass 'none' or 'dense_block_diagonal' via --compile_variants instead."
-        )
     label = arm_label(packing_impl, use_compile)
     vlm_cfg = dataclasses.replace(
         base_vlm_cfg,
@@ -206,11 +197,10 @@ def main():
                          help="Eager arms to run. Pass with no values (--variants) to skip all eager arms, "
                               "e.g. when adding just a compiled arm to an already-benchmarked eager set.")
     parser.add_argument("--compile_variants", nargs="*", default=["dense_block_diagonal"],
-                         choices=["none", "dense_block_diagonal"],
+                         choices=VARIANTS,
                          help="packing_impl values to ALSO run with train_cfg.compile=True, each producing "
                               "a distinct '<impl>_compile' row alongside the eager arms in one comparison. "
-                              "'flex_document_causal' is not a valid choice here -- train.py hard-rejects "
-                              "it combined with compile=True. Pass with no values to skip compiled arms.")
+                              "Pass with no values to skip compiled arms.")
     parser.add_argument("--max_training_steps", type=int, default=200)
     parser.add_argument("--stats_log_interval", type=int, default=25)
     parser.add_argument("--warmup_intervals", type=int, default=1,

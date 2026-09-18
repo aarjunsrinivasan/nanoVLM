@@ -297,20 +297,6 @@ def get_lr(it, max_lr, max_steps):
     return min_lr + coeff * (max_lr - min_lr)
 
 def train(train_cfg, vlm_cfg):
-    if vlm_cfg.lm_attn_packing_impl == 'flex_document_causal' and train_cfg.compile:
-        # Confirmed by direct testing: flex_document_causal's internal torch.compile(flex_attention)/
-        # torch.compile(create_block_mask) calls (models/language_model.py) produce genuinely wrong
-        # (cross-document-leaking) output when nested inside this function's own whole-model
-        # torch.compile(model) below -- unlike 'dense_block_diagonal', which is compile-safe (verified
-        # byte-identical to eager). Not yet root-caused / fixed, so refuse this combination outright
-        # rather than silently train with corrupted masking.
-        raise ValueError(
-            "lm_attn_packing_impl='flex_document_causal' is not supported together with "
-            "train_cfg.compile=True (verified to silently break cross-document masking under the "
-            "outer torch.compile(model)). Use lm_attn_packing_impl='dense_block_diagonal' with "
-            "--compile, or drop --compile to use flex_document_causal."
-        )
-
     train_loader, val_loader, iter_train_loader, iter_val_loader = get_dataloaders(train_cfg, vlm_cfg)
 
     if is_dist():

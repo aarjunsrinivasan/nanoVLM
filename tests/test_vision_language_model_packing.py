@@ -172,6 +172,89 @@ class TestVisionLanguageModelPacking(unittest.TestCase):
         self.assertFalse(matches, "'none' should NOT match the unpacked reference (that's the bug); it did.")
 
     # ----------------------------------------------------------------------------------------- #
+    # Packing under whole-model torch.compile
+    # ----------------------------------------------------------------------------------------- #
+    # train.py wraps the model in torch.compile when TrainConfig.compile=True. flex_document_causal
+    # already compiles flex_attention/create_block_mask internally, so under --compile those calls
+    # nest inside the outer graph. An earlier train.py refused that combination, citing silent
+    # cross-document leakage; this test is what replaced the refusal.
+    #
+    # The oracle above packs only 9+7=16 tokens, below flex's BLOCK_SIZE=128: the BlockMask is a
+    # single block and no document boundary ever falls inside one. Here the rows are long enough
+    # that boundaries land mid-block across ~14 live blocks, and the batch has two rows with
+    # DIFFERENT layouts, so a BlockMask batch-dimension mix-up under compile would also show.
+    # (Verified separately at full SmolLM2-360M scale -- see eval/h100/attn_packing.md.)
+
+    COMPILE_ROWS = ([131, 97, 260, 300, 150, 420, 77, 333],   # 8 docs
+                    [500, 268, 612, 388])                    # 4 docs, same total length
+
+    def _assert_compiled_packing_matches_unpacked(self, packing_impl):
+        import torch._dynamo
+        device = torch.device('cuda')
+        cfg = VLMConfig(**{**vars(self.cfg), 'lm_max_position_embeddings': 8192})
+        torch.manual_seed(0)
+        ref = VisionLanguageModel(VLMConfig(**{**vars(cfg), 'lm_attn_packing_impl': 'none'}), load_backbone=False).to(device).eval()
+        state = {k: v.detach().clone() for k, v in ref.state_dict().items()}
+
+        rows = []
+        for lens in self.COMPILE_ROWS:
+            docs = []
+            for n in lens:
+                ids = torch.randint(0, cfg.lm_vocab_size, (1, n), device=device)
+                labels = torch.full((1, n), -100, dtype=torch.long, device=device)
+                labels[:, 3:] = torch.randint(0, cfg.lm_vocab_size, (1, n - 3), device=device)
+                docs.append((ids, labels))
+            rows.append(docs)
+        num_valid = sum((l != -100).sum() for docs in rows for _, l in docs)
+
+        # Unpacked reference: every document alone, eager.
+        ref.zero_grad(set_to_none=True)
+        ref_per_token = [[self._per_token_loss(ref, i, torch.ones_like(i), l, doc_id=None) for i, l in docs] for docs in rows]
+        (sum(p.sum() for r in ref_per_token for p in r) / num_valid).backward()
+        ref_grads = {n: p.grad.detach().clone() for n, p in ref.named_parameters() if p.grad is not None}
+
+        packed_ids = torch.cat([torch.cat([d[0] for d in docs], 1) for docs in rows], 0)
+        packed_labels = torch.cat([torch.cat([d[1] for d in docs], 1) for docs in rows], 0)
+        doc_id = torch.cat([torch.cat([torch.full_like(d[0], k) for k, d in enumerate(docs)], 1) for docs in rows], 0)
+
+        model = VisionLanguageModel(VLMConfig(**{**vars(cfg), 'lm_attn_packing_impl': packing_impl}), load_backbone=False).to(device).eval()
+        model.load_state_dict(state)
+        torch._dynamo.reset()
+        saved = torch._dynamo.config.capture_dynamic_output_shape_ops
+        torch._dynamo.config.capture_dynamic_output_shape_ops = True   # as train.py sets before compiling
+        try:
+            compiled = torch.compile(model)
+            compiled.zero_grad(set_to_none=True)
+            packed = self._per_token_loss(compiled, packed_ids, torch.ones_like(packed_ids), packed_labels, doc_id=doc_id)
+            (packed.sum() / num_valid).backward()
+        finally:
+            torch._dynamo.config.capture_dynamic_output_shape_ops = saved
+            torch._dynamo.reset()
+
+        for r, lens in enumerate(self.COMPILE_ROWS):
+            offset = 0
+            for k, n in enumerate(lens):
+                torch.testing.assert_close(packed[r:r + 1, offset:offset + n], ref_per_token[r][k], atol=1e-4, rtol=1e-3,
+                                           msg=lambda m, r=r, k=k: f"{packing_impl}+compile: row {r} doc {k} loss mismatch: {m}")
+                offset += n
+
+        # torch.compile prefixes parameter names with '_orig_mod.'; strip it, and require every
+        # parameter to be compared -- an empty intersection would make this loop pass vacuously.
+        grads = {n.replace('_orig_mod.', ''): p.grad for n, p in compiled.named_parameters() if p.grad is not None}
+        self.assertEqual(set(grads), set(ref_grads))
+        for name in ref_grads:
+            torch.testing.assert_close(grads[name], ref_grads[name], atol=1e-4, rtol=1e-3,
+                                       msg=lambda m, name=name: f"{packing_impl}+compile grad mismatch for {name}: {m}")
+
+    @unittest.skipUnless(torch.cuda.is_available(), "flex_attention has no CPU backward support")
+    def test_flex_document_causal_under_torch_compile_matches_unpacked_reference(self):
+        self._assert_compiled_packing_matches_unpacked('flex_document_causal')
+
+    @unittest.skipUnless(torch.cuda.is_available(), "compiled comparison run on CUDA alongside the flex case")
+    def test_dense_block_diagonal_under_torch_compile_matches_unpacked_reference(self):
+        self._assert_compiled_packing_matches_unpacked('dense_block_diagonal')
+
+    # ----------------------------------------------------------------------------------------- #
     # The RoPE half of the fix: per-document position reset
     # ----------------------------------------------------------------------------------------- #
     # Both packing impls reset RoPE position ids to 0 at every document boundary

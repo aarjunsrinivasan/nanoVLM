@@ -53,12 +53,14 @@ class VLMConfig:
     #   'flex_document_causal'  - torch.nn.attention.flex_attention with a compiled document-causal
     #                              BlockMask. Faster than 'dense_block_diagonal' under eager
     #                              execution (both flex_attention and create_block_mask are
-    #                              torch.compile'd internally). CONFIRMED INCOMPATIBLE with
-    #                              TrainConfig.compile=True: the whole-model torch.compile(model)
-    #                              (train.py) nests around these already-compiled inner calls and
-    #                              silently produces wrong (cross-document-leaking) output --
-    #                              train.py refuses this combination outright. Use
-    #                              'dense_block_diagonal' when TrainConfig.compile=True.
+    #                              torch.compile'd internally). Also works with
+    #                              TrainConfig.compile=True, where the whole-model torch.compile
+    #                              nests around those inner calls: on torch 2.14 that matches the
+    #                              unpacked reference in forward and gradients at full model scale
+    #                              (tests/test_vision_language_model_packing.py) and is the fastest
+    #                              training configuration measured (eval/h100/attn_packing.md).
+    #                              An earlier train.py refused this combination citing silent
+    #                              cross-document leakage, which no longer reproduces.
     # See eval/benchmark_attn_packing.py for the isolated-core A/B benchmark these were chosen from.
     lm_attn_packing_impl: str = 'none'
     lm_attn_flex_block_size: int = 128  # create_block_mask BLOCK_SIZE, only used by 'flex_document_causal'
