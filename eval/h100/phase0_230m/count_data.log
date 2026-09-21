@@ -1,0 +1,15 @@
+Getting dataloaders from HuggingFaceM4/FineVision_concat_shuffled_2
+Resize to max side len: True
+[shard_cache] 9997 train / 3 val shards in /workspace/.cache/finevision_shards, working set ~1.5 GiB, max_cache_gb=400
+Val size per GPU: 5000
+Warming up dataloaders...
+/workspace/nanoVLM/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py:759: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+/workspace/nanoVLM/.venv/lib/python3.12/site-packages/torch/utils/data/dataloader.py:1102: UserWarning: 'pin_memory' argument is set as true but no accelerator is found, then device pinned memory won't be used.
+  super().__init__(loader)
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (10156 > 8192). Running this sequence through the model will result in indexing errors
+Warmup complete.
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+200 (987, 400, 1022)
+600 (2997, 1200, 2970)
+raw samples per packed row: 2.513  docs per row: 2.435

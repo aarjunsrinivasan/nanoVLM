@@ -1,0 +1,38 @@
+1789848472.480869641 --- VLM Config ---
+1789848472.485551136 VLMConfig(vit_hidden_dim=768, vit_inter_dim=3072, vit_patch_size=16, vit_img_size=512, vit_n_heads=12, vit_dropout=0.0, vit_n_blocks=12, vit_ln_eps=1e-06, vit_cls_flag=False, vit_model_type='google/siglip2-base-patch16-512', lm_hidden_dim=960, lm_inter_dim=2560, lm_rms_eps=1e-05, lm_re_base=100000, lm_max_position_embeddings=8192, lm_base_vocab_size=49152, extra_token_amount=66, lm_vocab_size=49218, lm_n_heads=15, lm_n_kv_heads=5, lm_dropout=0.0, lm_n_blocks=32, lm_attn_scaling=1.0, lm_max_length=4096, lm_use_tokens=False, lm_tie_weights=True, lm_model_type='HuggingFaceTB/SmolLM2-135M-Instruct', lm_tokenizer='HuggingFaceTB/SmolLM2-360M-Instruct', lm_loss_impl='full', lm_attn_packing_impl='none', lm_attn_flex_block_size=128, lm_chat_template="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}", mp_pixel_shuffle_factor=4, mp_image_token_length=64, max_img_size=2048, resize_to_max_side_len=True, vlm_extra_tokens={'image_token': '<|image|>', 'global_image_token': '<|global_image|>', 'r1c1': '<row_1_col_1>', 'r1c2': '<row_1_col_2>', 'r1c3': '<row_1_col_3>', 'r1c4': '<row_1_col_4>', 'r1c5': '<row_1_col_5>', 'r1c6': '<row_1_col_6>', 'r1c7': '<row_1_col_7>', 'r1c8': '<row_1_col_8>', 'r2c1': '<row_2_col_1>', 'r2c2': '<row_2_col_2>', 'r2c3': '<row_2_col_3>', 'r2c4': '<row_2_col_4>', 'r2c5': '<row_2_col_5>', 'r2c6': '<row_2_col_6>', 'r2c7': '<row_2_col_7>', 'r2c8': '<row_2_col_8>', 'r3c1': '<row_3_col_1>', 'r3c2': '<row_3_col_2>', 'r3c3': '<row_3_col_3>', 'r3c4': '<row_3_col_4>', 'r3c5': '<row_3_col_5>', 'r3c6': '<row_3_col_6>', 'r3c7': '<row_3_col_7>', 'r3c8': '<row_3_col_8>', 'r4c1': '<row_4_col_1>', 'r4c2': '<row_4_col_2>', 'r4c3': '<row_4_col_3>', 'r4c4': '<row_4_col_4>', 'r4c5': '<row_4_col_5>', 'r4c6': '<row_4_col_6>', 'r4c7': '<row_4_col_7>', 'r4c8': '<row_4_col_8>', 'r5c1': '<row_5_col_1>', 'r5c2': '<row_5_col_2>', 'r5c3': '<row_5_col_3>', 'r5c4': '<row_5_col_4>', 'r5c5': '<row_5_col_5>', 'r5c6': '<row_5_col_6>', 'r5c7': '<row_5_col_7>', 'r5c8': '<row_5_col_8>', 'r6c1': '<row_6_col_1>', 'r6c2': '<row_6_col_2>', 'r6c3': '<row_6_col_3>', 'r6c4': '<row_6_col_4>', 'r6c5': '<row_6_col_5>', 'r6c6': '<row_6_col_6>', 'r6c7': '<row_6_col_7>', 'r6c8': '<row_6_col_8>', 'r7c1': '<row_7_col_1>', 'r7c2': '<row_7_col_2>', 'r7c3': '<row_7_col_3>', 'r7c4': '<row_7_col_4>', 'r7c5': '<row_7_col_5>', 'r7c6': '<row_7_col_6>', 'r7c7': '<row_7_col_7>', 'r7c8': '<row_7_col_8>', 'r8c1': '<row_8_col_1>', 'r8c2': '<row_8_col_2>', 'r8c3': '<row_8_col_3>', 'r8c4': '<row_8_col_4>', 'r8c5': '<row_8_col_5>', 'r8c6': '<row_8_col_6>', 'r8c7': '<row_8_col_7>', 'r8c8': '<row_8_col_8>'}, vlm_load_backbone_weights=True, vlm_checkpoint_path='checkpoints', hf_repo_name=None)
+1789848472.489133585 --- Train Config ---
+1789848472.494615080 TrainConfig(lr_mp=0.00512, lr_vision_backbone=5e-05, lr_language_backbone=5e-05, val_size=5000, batch_size=2, gradient_accumulation_steps=8, max_grad_norm=1.0, eval_in_epochs=False, eval_interval=500, stats_log_interval=25, max_training_steps=300, max_images_per_example=4, max_images_per_knapsack=18, max_sample_length=4096, compile=False, resume_from_vlm_checkpoint=False, train_dataset_path='HuggingFaceM4/FineVision_concat_shuffled_2', train_dataset_name=('default',), stream_dataset=True, dataset_cache_dir='/workspace/.cache/finevision_shards', max_cache_gb=400.0, prefetch_shards=1, cache_evict_grace_min=2.0, num_workers=2, relevance_min_rating=1, image_correspondence_min_rating=1, visual_dependency_min_rating=1, formatting_min_rating=1, wandb_entity='arjunsrinivasan', wandb_project='nanoVLM', wandb_group=None, wandb_tags=(), run_name_suffix=None, log_wandb=False, use_lmms_eval=False, lmms_eval_tasks='mmstar,mmmu_val,ocrbench,textvqa_val,docvqa_val,scienceqa,mme,infovqa_val,chartqa', lmms_eval_limit=None, lmms_eval_batch_size=64)
+1789848472.498710439 Getting dataloaders from HuggingFaceM4/FineVision_concat_shuffled_2
+1789848472.501874055 Resize to max side len: True
+1789848473.586255768 [shard_cache] 9997 train / 3 val shards in /workspace/.cache/finevision_shards, working set ~2.6 GiB, max_cache_gb=400.0
+1789848473.825760036 Val size per GPU: 5000
+1789848473.831563600 Warming up dataloaders...
+1789848480.239664071 Warmup complete.
+1789848480.242080258 Loading from backbone weights
+1789848482.895741537 Successfully loaded google/siglip2-base-patch16-512 weights from safetensors. Model has 86,433,024 parameters.
+1789848484.380826974 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (9060 > 8192). Running this sequence through the model will result in indexing errors
+1789848485.361673720 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (10156 > 8192). Running this sequence through the model will result in indexing errors
+1789848486.486873247 Extending token embeddings from torch.Size([49152, 576]) to torch.Size([49218, 576])
+1789848486.509222070 Initialized 66 new token embeddings
+1789848486.798971286 Successfully loaded HuggingFaceTB/SmolLM2-135M-Instruct weights from safetensors. Model has 134,553,024 parameters.
+1789848486.953280484 nanoVLM initialized with 228,063,936 parameters
+1789848486.957616804 Training summary: -1 samples, batch size 16
+1789848486.961017699 Validation summary: -1 samples, batch size 16
+1789848486.965312982 Using device: cuda
+1789848487.255170549 Starting training loop
+1789848494.536943611 Step: 0, Loss: 1.3142, Tokens/s: 6415, fw_bw: 0.830s, data: 0.001s, peak alloc: 35.30 GiB, peak reserved: 36.67 GiB
+1789848550.143427926 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+1789848612.807139317 Step: 25, Loss: 1.7625, Tokens/s: 9634, fw_bw: 0.484s, data: 0.057s, peak alloc: 39.91 GiB, peak reserved: 41.31 GiB
+1789848741.242490081 Step: 50, Loss: 1.3097, Tokens/s: 8354, fw_bw: 0.551s, data: 0.040s, peak alloc: 41.52 GiB, peak reserved: 42.97 GiB
+1789848857.728497211 Step: 75, Loss: 1.4031, Tokens/s: 9135, fw_bw: 0.496s, data: 0.035s, peak alloc: 42.81 GiB, peak reserved: 44.24 GiB
+1789848924.530373019 Step: 100, Loss: 0.9791, Tokens/s: 14983, fw_bw: 0.286s, data: 0.002s, peak alloc: 40.23 GiB, peak reserved: 44.24 GiB
+1789848991.345885216 Step: 125, Loss: 2.0178, Tokens/s: 14690, fw_bw: 0.283s, data: 0.001s, peak alloc: 39.91 GiB, peak reserved: 44.24 GiB
+1789849057.246937908 Step: 150, Loss: 2.5850, Tokens/s: 14982, fw_bw: 0.282s, data: 0.000s, peak alloc: 38.61 GiB, peak reserved: 44.24 GiB
+1789849122.676893731 Step: 175, Loss: 1.5099, Tokens/s: 15141, fw_bw: 0.280s, data: 0.000s, peak alloc: 39.91 GiB, peak reserved: 44.24 GiB
+1789849189.707932418 Step: 200, Loss: 1.1467, Tokens/s: 14638, fw_bw: 0.286s, data: 0.000s, peak alloc: 41.84 GiB, peak reserved: 44.24 GiB
+1789849257.680333701 Step: 225, Loss: 1.0811, Tokens/s: 14521, fw_bw: 0.289s, data: 0.000s, peak alloc: 42.81 GiB, peak reserved: 44.26 GiB
+1789849325.659666302 Step: 250, Loss: 0.8897, Tokens/s: 14590, fw_bw: 0.288s, data: 0.000s, peak alloc: 38.94 GiB, peak reserved: 44.26 GiB
+1789849391.813278429 Step: 275, Loss: 1.0623, Tokens/s: 14868, fw_bw: 0.278s, data: 0.000s, peak alloc: 37.64 GiB, peak reserved: 44.26 GiB
+1789849455.940544241 Epoch: 1, Step: 300/300, Train Loss: 1.3500 | Time: 968.69s | T/s: 11847.87
+1789849455.945285650 Average time per epoch: 968.69s
+1789849455.948182881 Average time per sample: 0.2018s
