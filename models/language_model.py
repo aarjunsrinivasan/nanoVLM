@@ -1,5 +1,6 @@
 import math
 import warnings
+import contextlib
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -574,6 +575,28 @@ class LanguageModelBlock(nn.Module):
         return x, block_kv_cache
 
 # https://github.com/meta-llama/llama3/blob/main/llama/model.py#L251
+@contextlib.contextmanager
+def packing_impl_override(language_model, impl):
+    """Eval only: temporarily score an eager (uncompiled) LanguageModel under another packed-row attention mask.
+
+    packing_impl is cached on the LanguageModel and on every attention module at construction, so all of them are
+    switched together and restored on exit. Only the two plain-SDPA masks are allowed ('dense_block_diagonal' computes
+    the same attention as 'flex_document_causal'), so this never touches the compiled flex singletons. Call it on the
+    module under torch.compile (`_orig_mod`), never through the compiled wrapper, so no guard or recompile is involved.
+    """
+    if impl not in ('none', 'dense_block_diagonal'):
+        raise ValueError(f"packing_impl_override supports 'none' and 'dense_block_diagonal', got {impl!r}")
+    mods = [language_model] + [m for m in language_model.modules() if isinstance(m, LanguageModelGroupedQueryAttention)]
+    saved = [m.packing_impl for m in mods]
+    try:
+        for m in mods:
+            m.packing_impl = impl
+        yield
+    finally:
+        for m, v in zip(mods, saved):
+            m.packing_impl = v
+
+
 class LanguageModel(nn.Module):
     def __init__(self, cfg):
         super().__init__()

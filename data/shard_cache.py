@@ -57,6 +57,9 @@ class CacheContext:
     prefetch: int          # upcoming shards of the same worker to download in the background
     max_cache_bytes: int   # None disables eviction
     grace_s: float         # never evict shards touched more recently than this
+    n_streams: int = 1     # logical read streams (one per DataLoader worker); stream s reads files[s], files[s + n_streams], ...
+    rotation: int = 0      # resume only: DataLoader worker w serves logical stream (w + rotation) % n_streams
+    stream_skip: tuple = ()  # resume only: rows each logical stream already produced, skipped without decoding
 
 
 # Per-process state (each DataLoader worker is its own process).
@@ -283,7 +286,8 @@ def _prefetch(filename, ctx):
         print(f"[shard_cache] Warning: background download of {filename} failed: {e}")
 
 
-def _read_shard(filename, ctx):
+def _read_shard(filename, ctx, skip=0):
+    """Yield the rows of one shard, starting after its first `skip` rows (whole row groups are skipped unread)."""
     pf = None
     for _ in range(3):
         path = ensure_local(filename, ctx)
@@ -300,36 +304,59 @@ def _read_shard(filename, ctx):
         return
     try:
         for i in range(pf.num_row_groups):
+            n = pf.metadata.row_group(i).num_rows
+            if skip >= n:
+                skip -= n
+                continue
             try:
                 rows = pf.read_row_group(i).to_pylist()
             except (pa.ArrowInvalid, OSError) as e:
                 print(f"[shard_cache] Warning: skipping rest of {filename} after read error: {e}")
                 return
-            yield from rows
+            yield from rows[skip:]
+            skip = 0
     finally:
         pf.close()
 
 
-def _iter_shard_rows(pos, ctx):
-    """Yield the rows of `ctx.files[p]` for p in `pos` (datasets calls this with one position at a time)."""
+def _shard_num_rows(filename, ctx):
+    return pq.ParquetFile(ensure_local(filename, ctx)).metadata.num_rows
+
+
+def _iter_shard_rows(streams, ctx):
+    """Yield the rows of each logical stream in `streams` (datasets hands each DataLoader worker exactly one).
+
+    Logical stream s reads ctx.files[s], ctx.files[s + n], ... (n = ctx.n_streams), which is the same shard order the
+    DataLoader workers had when they were handed every num_workers-th shard directly. On a resumed run, DataLoader
+    worker w serves stream (w + ctx.rotation) % n, and each stream first skips the ctx.stream_skip rows it already produced.
+    """
     worker = get_worker_info()
-    # DataLoader workers get every num_workers-th shard, so this worker's next shards are p + k * stride
-    stride = worker.num_workers if worker is not None else 1
     if worker is not None:
         disable_progress_bars()  # a tqdm bar per worker download is just noise
     _start_heartbeat(ctx)
-    for p in pos:
-        filename = ctx.files[p]
-        lookahead = [ctx.files[p + k * stride] for k in range(1, ctx.prefetch + 1) if p + k * stride < len(ctx.files)]
-        held = [filename] + lookahead
-        _hold(held)
-        try:
-            for name in lookahead:
-                if not _is_complete(os.path.join(ctx.cache_dir, name), ctx.sizes.get(name)):
-                    _prefetch_executor().submit(_prefetch, name, ctx)
-            yield from _read_shard(filename, ctx)
-        finally:
-            _unhold(held)
+    n = ctx.n_streams
+    for s in streams:
+        s = (s + ctx.rotation) % n
+        skip = ctx.stream_skip[s] if s < len(ctx.stream_skip) else 0
+        positions = range(s, len(ctx.files), n)
+        for j, p in enumerate(positions):
+            filename = ctx.files[p]
+            if skip:
+                n_rows = _shard_num_rows(filename, ctx)
+                if skip >= n_rows:  # this whole shard was already consumed before the resume
+                    skip -= n_rows
+                    continue
+            lookahead = [ctx.files[q] for q in positions[j + 1:j + 1 + ctx.prefetch]]
+            held = [filename] + lookahead
+            _hold(held)
+            try:
+                for name in lookahead:
+                    if not _is_complete(os.path.join(ctx.cache_dir, name), ctx.sizes.get(name)):
+                        _prefetch_executor().submit(_prefetch, name, ctx)
+                yield from _read_shard(filename, ctx, skip)
+                skip = 0
+            finally:
+                _unhold(held)
 
 
 def _rank_block(files, world_size, rank):
@@ -338,8 +365,11 @@ def _rank_block(files, world_size, rank):
     return files[start:start + per + (1 if rank < extra else 0)]
 
 
-def get_cached_train_val_datasets(train_cfg, world_size, rank):
-    """Train/val IterableDatasets for this rank that read shards through the local cache. Val gets the first shards."""
+def get_cached_train_val_datasets(train_cfg, world_size, rank, data_state=None):
+    """Train/val IterableDatasets for this rank that read shards through the local cache. Val gets the first shards.
+
+    `data_state` (from a checkpoint saved with save_training_state) resumes the train streams where they stopped.
+    """
     cache_dir = os.path.abspath(os.path.expanduser(train_cfg.dataset_cache_dir))
     os.makedirs(cache_dir, exist_ok=True)
     sweep_stale_incomplete(cache_dir)
@@ -359,7 +389,7 @@ def get_cached_train_val_datasets(train_cfg, world_size, rank):
 
     sizes = dict(zip(manifest.files, manifest.sizes))
 
-    def build(files, prefetch):
+    def build(files, prefetch, n_streams, rotation=0, stream_skip=()):
         ctx = CacheContext(
             repo_id=manifest.repo_id,
             revision=manifest.revision,
@@ -370,9 +400,20 @@ def get_cached_train_val_datasets(train_cfg, world_size, rank):
             prefetch=prefetch,
             max_cache_bytes=max_cache_bytes,
             grace_s=train_cfg.cache_evict_grace_min * 60,
+            n_streams=n_streams,
+            rotation=rotation,
+            stream_skip=tuple(stream_skip),
         )
-        return IterableDataset.from_generator(_iter_shard_rows, features=features, gen_kwargs={"pos": list(range(len(files))), "ctx": ctx})
+        # One list entry per logical stream, so datasets gives each DataLoader worker exactly one of them
+        return IterableDataset.from_generator(_iter_shard_rows, features=features, gen_kwargs={"streams": list(range(n_streams)), "ctx": ctx})
 
-    train_ds = build(_rank_block(train_files, world_size, rank), train_cfg.prefetch_shards)
-    val_ds = build(_rank_block(val_files, world_size, rank), 0).take(int(train_cfg.val_size / world_size))
+    n_train_streams = max(train_cfg.num_workers, 1)
+    rotation, stream_skip = 0, ()
+    if data_state is not None:
+        if data_state["n_streams"] != n_train_streams:
+            raise ValueError(f"Resuming needs the same num_workers as the saved run ({data_state['n_streams']}), got {train_cfg.num_workers}")
+        rotation = data_state["rotation"]
+        stream_skip = [data_state["streams"][s]["raw"] if s in data_state["streams"] else 0 for s in range(n_train_streams)]
+    train_ds = build(_rank_block(train_files, world_size, rank), train_cfg.prefetch_shards, n_train_streams, rotation, stream_skip)
+    val_ds = build(_rank_block(val_files, world_size, rank), 0, 1).take(int(train_cfg.val_size / world_size))  # the val DataLoader has 1 worker
     return train_ds, val_ds

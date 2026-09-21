@@ -105,7 +105,11 @@ class TrainConfig:
     max_images_per_knapsack: int = 18
     max_sample_length: int = 4096
     compile: bool = False
+    seed: int = 0 # Seeds model init (torch), the DataLoader generator (-> per-worker knapsack shuffles) and the main-process `random`; 0 reproduces pre-flag runs
     resume_from_vlm_checkpoint: bool = False # Indicate if the training should be resumed from a checkpoint of the whole VLM or you want to start from scratch
+    save_training_state: bool = False # At each eval, also save optimizer/step/RNG/data position (training_state.pt) so the run can be resumed exactly; only the latest such checkpoint is kept
+    resume_from: str = None # Run dir (resumes its `latest` checkpoint) or step dir saved with save_training_state; restores model, optimizer, step, RNG and data position
+    eval_mask_rows: int = 0 # If > 0, each eval also scores the uncompiled model eagerly under both the per-document and the unmasked attention mask on this many val rows (token-weighted); 0 disables
     train_dataset_path: str = 'HuggingFaceM4/FineVision_concat_shuffled_2'
     train_dataset_name: tuple[str, ...] = ("default", ) #('allava_laion', 'allava_vflan', 'cambrian(filtered)_processed', 'LLaVA_Instruct_150K', 'mmevol', 'sharegpt4o', 'sharegpt4v(coco)', 'sharegpt4v(knowledge)', 'sharegpt4v(llava)', 'sharegpt4v(sam)') # 'vision_flan(filtered)', 'lvis_instruct4v',
     stream_dataset: bool = True

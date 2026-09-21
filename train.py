@@ -2,6 +2,8 @@ import os
 import re
 import json
 import math
+import shutil
+import hashlib
 import time
 import torch
 import torch._dynamo
@@ -30,11 +32,13 @@ from data.datasets import VQADataset
 from data.collators import VQACollator
 from data.data_utils import synchronized_dataloader_step
 from data.advanced_datasets import ConstantLengthDataset
+from data.data_progress import DataProgress
 from data.shard_cache import get_cached_train_val_datasets
 from data.processors import get_image_processor, get_tokenizer
 
 import models.config as config
 from models.vision_language_model import VisionLanguageModel
+from models.language_model import packing_impl_override
 
 #Otherwise, the tokenizer will throw a warning
 import os
@@ -193,7 +197,8 @@ def get_hub_train_val_datasets(train_cfg):
 
     return train_ds, val_ds
 
-def get_dataloaders(train_cfg, vlm_cfg):
+def get_dataloaders(train_cfg, vlm_cfg, data_state=None):
+    """data_state (from a save_training_state checkpoint) resumes the train stream exactly where that run stopped."""
     print(f"Getting dataloaders from {train_cfg.train_dataset_path}")
     # Create datasets
     image_processor = get_image_processor(vlm_cfg.max_img_size, vlm_cfg.vit_img_size, vlm_cfg.resize_to_max_side_len)
@@ -205,9 +210,11 @@ def get_dataloaders(train_cfg, vlm_cfg):
         if tuple(train_cfg.train_dataset_name) != ("default",):
             raise ValueError("dataset_cache_dir reads all parquet shards of the repo, so train_dataset_name must be ('default',)")
         # Don't iterate the datasets here: that would start download threads before the DataLoader forks its workers
-        train_ds, val_ds = get_cached_train_val_datasets(train_cfg, get_world_size(), get_rank())
+        train_ds, val_ds = get_cached_train_val_datasets(train_cfg, get_world_size(), get_rank(), data_state)
         print(f"Val size per GPU: {int(train_cfg.val_size/get_world_size())}")
     else:
+        if data_state is not None:
+            raise ValueError("Resuming the data position needs dataset_cache_dir (the shard reader skips consumed rows)")
         train_ds, val_ds = get_hub_train_val_datasets(train_cfg)
 
     train_dataset = VQADataset(
@@ -232,7 +239,8 @@ def get_dataloaders(train_cfg, vlm_cfg):
     )
 
     train_dataset = ConstantLengthDataset(train_dataset, infinite=False, max_sample_length=train_cfg.max_sample_length, seq_length=vlm_cfg.lm_max_length, num_of_sequences=train_cfg.batch_size*4, queue_size=8,
-                                        max_images_per_example=train_cfg.max_images_per_example, max_images_per_knapsack=train_cfg.max_images_per_knapsack)
+                                        max_images_per_example=train_cfg.max_images_per_example, max_images_per_knapsack=train_cfg.max_images_per_knapsack,
+                                        resume_state=data_state)
 
     val_dataset = ConstantLengthDataset(val_dataset, infinite=False, max_sample_length=train_cfg.max_sample_length, seq_length=vlm_cfg.lm_max_length, num_of_sequences=train_cfg.batch_size*4, queue_size=8,
                                         max_images_per_example=train_cfg.max_images_per_example, max_images_per_knapsack=train_cfg.max_images_per_knapsack)
@@ -241,7 +249,7 @@ def get_dataloaders(train_cfg, vlm_cfg):
     vqa_collator = VQACollator(tokenizer, vlm_cfg.lm_max_length)
 
     g = torch.Generator()
-    g.manual_seed(0)
+    g.manual_seed(train_cfg.seed)
 
     # Create dataloaders
 
@@ -273,8 +281,13 @@ def get_dataloaders(train_cfg, vlm_cfg):
     print("Warming up dataloaders...")   
     iter_train_loader = iter(train_loader)
     iter_val_loader = iter(val_loader)
-    next(iter_train_loader)
-    next(iter_val_loader)
+    # The warmup batches are consumed but never trained on (upstream behavior); DataProgress counts the train one as
+    # consumed. A resumed run skips both: its train stream already starts right after the last batch the saved run
+    # consumed, and its first eval should see the same val batches as every eval after the first in a straight run.
+    train_loader.warmup_stream_state = []
+    if data_state is None:
+        train_loader.warmup_stream_state = next(iter_train_loader).get("stream_state", [])
+        next(iter_val_loader)
     print("Warmup complete.")
 
     return train_loader, val_loader, iter_train_loader, iter_val_loader
@@ -296,8 +309,83 @@ def get_lr(it, max_lr, max_steps):
     coeff = 0.5 * (1.0 + math.cos(math.pi * decay_ratio)) # coeff starts at 1 and goes to 0
     return min_lr + coeff * (max_lr - min_lr)
 
+TRAINING_STATE = "training_state.pt"
+DATA_TRACE = os.environ.get("NANOVLM_DATA_TRACE") == "1"  # print a hash of every train micro-batch, to check data order across runs/resumes
+
+def resolve_resume_dir(path):
+    """A run dir resumes its `latest` checkpoint; a step dir resumes itself."""
+    latest = os.path.join(path, "latest")
+    if os.path.exists(latest):
+        with open(latest) as f:
+            path = os.path.join(path, f.read().strip())
+    if not os.path.exists(os.path.join(path, TRAINING_STATE)):
+        raise FileNotFoundError(f"No {TRAINING_STATE} in {path} (was the run saved with --save_training_state?)")
+    return path
+
+def save_training_state(step_dir, state, keep_dirs=()):
+    """Write training_state.pt next to the weights already saved in step_dir, point `latest` at it, and prune.
+
+    Both files are written to a temp name and renamed, so `latest` only ever names a complete checkpoint. Older step
+    dirs of the run are deleted, except those in keep_dirs (the best checkpoint keeps its weights, not its state).
+    """
+    tmp = os.path.join(step_dir, TRAINING_STATE + ".tmp")
+    torch.save(state, tmp)
+    os.replace(tmp, os.path.join(step_dir, TRAINING_STATE))
+    run_dir = os.path.dirname(step_dir)
+    with open(os.path.join(run_dir, "latest.tmp"), "w") as f:
+        f.write(os.path.basename(step_dir))
+    os.replace(os.path.join(run_dir, "latest.tmp"), os.path.join(run_dir, "latest"))
+    keep = {os.path.abspath(d) for d in keep_dirs if d}
+    for name in os.listdir(run_dir):
+        d = os.path.join(run_dir, name)
+        if not name.startswith("step_") or not os.path.isdir(d) or os.path.abspath(d) == os.path.abspath(step_dir):
+            continue
+        if os.path.abspath(d) in keep:
+            if os.path.exists(os.path.join(d, TRAINING_STATE)):
+                os.remove(os.path.join(d, TRAINING_STATE))
+        else:
+            shutil.rmtree(d)
+
+@torch.no_grad()
+def eval_under_masks(model, val_loader, device, max_rows=None):
+    """Token-weighted val loss of the uncompiled model, run eagerly, under the per-document and the unmasked mask.
+
+    Every arm is scored the same way whatever it trained with: the same val rows (a fresh val iterator per mask), the
+    'full' loss path, and SDPA attention ('dense_block_diagonal' computes what 'flex_document_causal' does). The
+    compiled graph is never called, so this adds no recompiles. max_rows=None scores the whole val set.
+    """
+    m = model.module if is_dist() else model
+    m = getattr(m, "_orig_mod", m)
+    loss_impl = m.cfg.lm_loss_impl
+    m.cfg.lm_loss_impl = "full"
+    out = {}
+    try:
+        for name, impl in (("doc_masked", "dense_block_diagonal"), ("unmasked", "none")):
+            loss_sum, n_tokens, rows = 0.0, 0, 0
+            with packing_impl_override(m.decoder, impl):
+                for batch in val_loader:
+                    labels = batch["labels"].to(device)
+                    with torch.autocast(device_type=device.type, dtype=torch.bfloat16 if device.type in ['cuda', 'cpu'] else torch.float16):
+                        _, loss = m(batch["input_ids"].to(device), batch["images"], attention_mask=batch["attention_mask"].to(device),
+                                    targets=labels, doc_id=batch["doc_id"].to(device))
+                    n = (labels != -100).sum().item()
+                    loss_sum += loss.item() * n
+                    n_tokens += n
+                    rows += labels.size(0)
+                    if max_rows is not None and rows >= max_rows:
+                        break
+            out[name] = loss_sum / max(n_tokens, 1)
+    finally:
+        m.cfg.lm_loss_impl = loss_impl
+    return out
+
 def train(train_cfg, vlm_cfg):
-    train_loader, val_loader, iter_train_loader, iter_val_loader = get_dataloaders(train_cfg, vlm_cfg)
+    resume_dir, resume_state = None, None
+    if train_cfg.resume_from:
+        resume_dir = resolve_resume_dir(train_cfg.resume_from)
+        resume_state = torch.load(os.path.join(resume_dir, TRAINING_STATE), map_location="cpu", weights_only=False)
+        print(f"Resuming from {resume_dir} ({resume_state['global_step']} optimizer steps done)")
+    train_loader, val_loader, iter_train_loader, iter_val_loader = get_dataloaders(train_cfg, vlm_cfg, resume_state["data"] if resume_state else None)
 
     if is_dist():
         print("Rank", get_rank(), "Waiting for all workers to get dataloaders...")
@@ -307,8 +395,14 @@ def train(train_cfg, vlm_cfg):
         if is_master():
             print("All workers have gotten dataloaders.")
 
-    run_name = get_run_name(train_cfg, vlm_cfg)
+    run_name = resume_state["run_name"] if resume_state else get_run_name(train_cfg, vlm_cfg)
     if train_cfg.log_wandb and is_master():
+        wandb_kwargs = {}
+        if resume_state and resume_state.get("wandb_run_id"):
+            # Continue the same run. wandb drops (with a warning) the replayed steps between the checkpoint and where the
+            # run died, keeping the values first logged there; the resume is exact, so they are the same steps anyway.
+            # (Rewinding the run instead needs wandb's private-preview rewind feature.)
+            wandb_kwargs.update(id=resume_state["wandb_run_id"], resume="must")
         run = wandb.init(
             entity=train_cfg.wandb_entity,
             project=train_cfg.wandb_project,
@@ -320,13 +414,16 @@ def train(train_cfg, vlm_cfg):
                 "provenance": get_provenance(),
             },
             name=run_name,
+            **wandb_kwargs,
         )
         # Define a custom x-axis for lmms-eval metrics
         lmms_eval_step = "<lmms-eval-step>"
         run.define_metric(name="lmms_eval/*", step_metric=lmms_eval_step)
 
     # Initialize model
-    if train_cfg.resume_from_vlm_checkpoint:
+    if resume_state is not None:
+        model = VisionLanguageModel.from_pretrained(resume_dir)
+    elif train_cfg.resume_from_vlm_checkpoint:
         print(f"Resuming from VLM checkpoint: {vlm_cfg.vlm_checkpoint_path}")
         model = VisionLanguageModel.from_pretrained(vlm_cfg.vlm_checkpoint_path)
     else:
@@ -375,6 +472,8 @@ def train(train_cfg, vlm_cfg):
     
     print(f"Using device: {device}")
     model.to(device)
+    if resume_state is not None:
+        optimizer.load_state_dict(resume_state["optimizer"])  # after .to(device): AdamW state follows its params' device on load
     
     if train_cfg.compile:
         # VisionLanguageModel.forward's loss branch gathers hidden states with a boolean mask
@@ -397,6 +496,38 @@ def train(train_cfg, vlm_cfg):
     logged_eval_steps = set()
     global_step = 0
     epoch = 0
+    data_progress = DataProgress(max(train_cfg.num_workers, 1), resume_state["data"] if resume_state else None)
+    data_progress.update(train_loader.warmup_stream_state)
+    if resume_state is not None:
+        global_step = resume_state["global_step"]
+        epoch = resume_state["epoch"] - 1  # the epoch loop increments it first
+        best_val_loss, best_model_path = resume_state["best_val_loss"], resume_state["best_model_path"]
+        rng = resume_state["rng"]
+        torch.set_rng_state(rng["torch"])
+        if rng["cuda"] is not None and torch.cuda.is_available():
+            torch.cuda.set_rng_state_all(rng["cuda"])
+        random.setstate(rng["python"])
+        numpy.random.set_state(rng["numpy"])
+
+    def training_state(optimizer_steps_done):
+        return {
+            "global_step": optimizer_steps_done,
+            "epoch": epoch,
+            "best_val_loss": best_val_loss,
+            "best_model_path": best_model_path,
+            "optimizer": optimizer.state_dict(),
+            "data": data_progress.state_dict(),
+            "rng": {
+                "torch": torch.get_rng_state(),
+                "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                "python": random.getstate(),
+                "numpy": numpy.random.get_state(),
+            },
+            "run_name": run_name,
+            "wandb_run_id": run.id if train_cfg.log_wandb else None,
+            "train_cfg": asdict(train_cfg),
+            "vlm_cfg": asdict(vlm_cfg),
+        }
     overall_peak_mem_allocated_gib = 0.0
     logged_tokens_per_second = []
     stats_history = []  # one entry per stats_log_interval, for callers that want warmup-trimmed stats
@@ -430,6 +561,9 @@ def train(train_cfg, vlm_cfg):
             labels = batch["labels"].to(device)
             attention_mask = batch["attention_mask"].to(device)
             doc_id = batch["doc_id"].to(device)
+            data_progress.update(batch.get("stream_state", []))
+            if DATA_TRACE:
+                print(f"data_trace step {global_step} micro {i} {hashlib.md5(batch['input_ids'].numpy().tobytes()).hexdigest()[:12]}")
             data_load_time = time.time() - data_load_start
 
             # When using DDP with gradient accumulation,
@@ -530,6 +664,12 @@ def train(train_cfg, vlm_cfg):
                     avg_val_loss = total_val_loss / val_batches if val_batches > 0 else 0
                     avg_val_loss = mean(dist_gather(avg_val_loss)) if is_dist() else avg_val_loss
 
+                    mask_losses = {}
+                    if train_cfg.eval_mask_rows > 0:
+                        mask_losses = eval_under_masks(model, val_loader, device, train_cfg.eval_mask_rows)
+                        if is_dist():
+                            mask_losses = {k: mean(dist_gather(v)) for k, v in mask_losses.items()}
+
                     checkpoint_path_step = ""
                     if is_master():
                         # Save a checkpoint for this evaluation step
@@ -548,10 +688,15 @@ def train(train_cfg, vlm_cfg):
                         if is_master():
                             best_model_path = checkpoint_path_step
                     
+                    if train_cfg.save_training_state and is_master():
+                        # The eval runs before this step's global_step += 1, so global_step + 1 optimizer steps are done
+                        save_training_state(checkpoint_path_step, training_state(global_step + 1), keep_dirs=[best_model_path])
+
                     if is_master():
-                        print(f"Step: {global_step}, Val Loss: {avg_val_loss:.4f}, Tokens/s: {tokens_per_second:.2f}")
+                        mask_msg = "".join(f", {k} val loss: {v:.4f}" for k, v in mask_losses.items())
+                        print(f"Step: {global_step}, Val Loss: {avg_val_loss:.4f}{mask_msg}, Tokens/s: {tokens_per_second:.2f}")
                         if train_cfg.log_wandb:
-                            run.log({"val_loss": avg_val_loss}, step=global_step)
+                            run.log({"val_loss": avg_val_loss, **{f"val/{k}_loss": v for k, v in mask_losses.items()}}, step=global_step)
 
                 model.train()
 
@@ -658,6 +803,9 @@ def train(train_cfg, vlm_cfg):
                     break
             data_load_start = time.time()
 
+        if resume_state is not None and global_step < train_cfg.max_training_steps:
+            # A new epoch would re-apply the resume position to a fresh pass over the data
+            raise NotImplementedError("The train stream ran out in a resumed run; restarting an epoch after a resume is not supported")
         iter_train_loader = iter(train_loader)
         avg_train_loss = total_train_loss / i
         # gather average batch loss from all ranks if DDP
@@ -678,6 +826,19 @@ def train(train_cfg, vlm_cfg):
                          "epoch_tokens_per_second": epoch_tokens_per_second})
 
             print(f"Epoch: {epoch}, Step: {global_step}/{train_cfg.max_training_steps}, Train Loss: {avg_train_loss:.4f} | Time: {epoch_duration:.2f}s | T/s: {epoch_tokens_per_second:.2f}")
+
+    if train_cfg.save_training_state and is_master():
+        # Final checkpoint (the last in-loop eval is at most eval_interval steps earlier) and a full val pass under both masks
+        model.eval()
+        final_losses = eval_under_masks(model, val_loader, device, max_rows=None)
+        print("Final full val pass: " + ", ".join(f"{k} val loss: {v:.4f}" for k, v in final_losses.items()))
+        if train_cfg.log_wandb:
+            run.log({f"val_final/{k}_loss": v for k, v in final_losses.items()}, step=global_step)
+            for k, v in final_losses.items():
+                run.summary[f"val_final/{k}_loss"] = v
+        final_dir = os.path.join(vlm_cfg.vlm_checkpoint_path, run_name, f"step_{global_step}")
+        (model.module if is_dist() else model).save_pretrained(save_directory=final_dir)
+        save_training_state(final_dir, training_state(global_step), keep_dirs=[best_model_path])
 
     # Summary Statistics
     if is_master():
@@ -754,6 +915,10 @@ def main():
     parser.add_argument('--run_name_suffix', type=str, help='Appended to the generated run name')
     parser.add_argument('--no_lmms_eval', action='store_true', help='Do not submit lmms-eval jobs (they need Slurm)')
     parser.add_argument('--no_hub_push', action='store_true', help='Do not push the best model to the Hugging Face Hub')
+    parser.add_argument('--seed', type=int, help='Seed for model init and data packing order (default 0 reproduces earlier runs)')
+    parser.add_argument('--save_training_state', action='store_true', help='At each eval also save optimizer/step/RNG/data position so the run can be resumed exactly (keeps only the latest)')
+    parser.add_argument('--resume_from', type=str, help='Resume exactly from a run dir (its latest checkpoint) or a step dir saved with --save_training_state')
+    parser.add_argument('--eval_mask_rows', type=int, help='At each eval, also score the uncompiled model under the per-document and the unmasked mask on this many val rows')
 
     args = parser.parse_args()
 
@@ -808,6 +973,14 @@ def main():
         train_cfg.eval_interval = args.eval_interval
     if args.no_eval:
         train_cfg.eval_in_epochs = False
+    if args.seed is not None:
+        train_cfg.seed = args.seed
+    if args.save_training_state:
+        train_cfg.save_training_state = True
+    if args.resume_from is not None:
+        train_cfg.resume_from = args.resume_from
+    if args.eval_mask_rows is not None:
+        train_cfg.eval_mask_rows = args.eval_mask_rows
     if args.val_size is not None:
         train_cfg.val_size = args.val_size
     if args.stats_log_interval is not None:
@@ -835,6 +1008,15 @@ def main():
     if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
         init_dist()
         PG_CPU = dist.new_group(backend="gloo")   # host‑RAM, zero GPU allocations
+
+    if is_dist() and (train_cfg.save_training_state or train_cfg.resume_from):
+        raise NotImplementedError("--save_training_state / --resume_from track one rank's data position; single-GPU only")
+
+    if train_cfg.seed != 0:
+        # Seed 0 keeps the import-time seeding above untouched, so runs from before this flag reproduce exactly
+        torch.manual_seed(train_cfg.seed)
+        torch.cuda.manual_seed_all(train_cfg.seed)
+        random.seed(42 + train_cfg.seed)  # main-process knapsack shuffles (num_workers=0); workers are seeded via the DataLoader generator
 
     if is_master():
         print("--- VLM Config ---")

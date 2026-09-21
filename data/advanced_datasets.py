@@ -19,8 +19,11 @@ class ConstantLengthDataset(IterableDataset):
         queue_size: int = 2,
         max_images_per_example: int = 4,
         max_images_per_knapsack: int = 18,
+        resume_state: dict = None,
     ):
         self.dataset = dataset
+        # From train.py's DataProgress.state_dict(): where each logical stream stopped, see _producer
+        self.resume_state = resume_state
         self.max_sample_length = max_sample_length
         self.seq_length = seq_length
         self.max_length = seq_length * num_of_sequences
@@ -61,6 +64,14 @@ class ConstantLengthDataset(IterableDataset):
         worker_info = get_worker_info()
         worker_id = worker_info.id if worker_info else 0
         num_workers = worker_info.num_workers if worker_info else 1
+        # Logical stream this worker packs, matching the shard reader's (data/shard_cache.py _iter_shard_rows)
+        rotation = self.resume_state["rotation"] if self.resume_state else 0
+        stream_id = (worker_id + rotation) % num_workers
+        start = self.resume_state["streams"].get(stream_id) if self.resume_state else None
+        if self.resume_state and start is None and worker_info is not None:
+            # This stream never delivered a batch before the checkpoint, so it starts fresh, but on a rotated worker:
+            # give it the `random` seed its original worker had (train.seed_worker seeds from base_seed + worker id)
+            random.seed((torch.initial_seed() - worker_id + stream_id) % 2**32)
 
         def make_base_iterator():
             """Return a (sharded) iterator over the underlying dataset."""
@@ -87,7 +98,7 @@ class ConstantLengthDataset(IterableDataset):
         queue: Queue = Queue(maxsize=self.queue_size)
 
         producer = threading.Thread(
-            target=self._producer, args=(make_base_iterator, queue), daemon=True
+            target=self._producer, args=(make_base_iterator, queue, stream_id, start), daemon=True
         )
         producer.start()
 
@@ -102,17 +113,32 @@ class ConstantLengthDataset(IterableDataset):
         self,
         make_iterator,  # a zero-arg lambda that returns a fresh (possibly sharded) iterator
         queue: Queue,
+        stream_id: int = 0,
+        start: dict = None,
     ):
-        """Runs in a separate daemon thread and keeps `queue` full."""
+        """Runs in a separate daemon thread and keeps `queue` full.
+
+        Every packed row is stamped with `stream_state` = (stream, raw rows read before its buffer, its group index in
+        that buffer, the `random` state before that buffer). Packing a buffer is deterministic given the buffer's raw
+        rows and that state (the knapsack shuffle is the only randomness), so a resumed stream (`start` = the stamp of
+        its last consumed row) re-reads from that buffer's first raw row (the shard reader skips the rows before it),
+        restores the state, repacks the same buffer and drops the groups that were already consumed.
+        """
         iterator = make_iterator()
         more_examples = True
+        raw = start["raw"] if start else 0
+        drop_through = start["group"] if start else -1
+        if start:
+            random.setstate(start["rng"])
 
         while more_examples:
             # ------------- 1) pull raw samples until we have enough -------- #
+            buffer_start, rng_state = raw, random.getstate()
             buffer, buffer_len = [], 0
             while buffer_len < self.max_length:
                 try:
                     sample = next(iterator)
+                    raw += 1
                 except StopIteration:
                     if self.infinite:
                         iterator = make_iterator()
@@ -157,7 +183,9 @@ class ConstantLengthDataset(IterableDataset):
             )
 
             packed_group = []
-            for g in groups:
+            for gi, g in enumerate(groups):
+                if gi <= drop_through:  # resumed: already consumed before the checkpoint
+                    continue
                 packed = self._pack_one_group(g, buffer, self.seq_length)
                 packed_group.append({
                     "input_ids":      packed[0],
@@ -165,7 +193,9 @@ class ConstantLengthDataset(IterableDataset):
                     "attention_mask": packed[2],
                     "images":         packed[3],
                     "doc_id":         packed[4],
+                    "stream_state":   {"stream": stream_id, "raw": buffer_start, "group": gi, "rng": rng_state},
                 })
+            drop_through = -1
 
             if packed_group:
                 queue.put(packed_group)
