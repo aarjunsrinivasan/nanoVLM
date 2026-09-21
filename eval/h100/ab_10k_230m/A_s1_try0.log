@@ -1,0 +1,302 @@
+--- VLM Config ---
+VLMConfig(vit_hidden_dim=768, vit_inter_dim=3072, vit_patch_size=16, vit_img_size=512, vit_n_heads=12, vit_dropout=0.0, vit_n_blocks=12, vit_ln_eps=1e-06, vit_cls_flag=False, vit_model_type='google/siglip2-base-patch16-512', lm_hidden_dim=960, lm_inter_dim=2560, lm_rms_eps=1e-05, lm_re_base=100000, lm_max_position_embeddings=8192, lm_base_vocab_size=49152, extra_token_amount=66, lm_vocab_size=49218, lm_n_heads=15, lm_n_kv_heads=5, lm_dropout=0.0, lm_n_blocks=32, lm_attn_scaling=1.0, lm_max_length=4096, lm_use_tokens=False, lm_tie_weights=True, lm_model_type='HuggingFaceTB/SmolLM2-135M-Instruct', lm_tokenizer='HuggingFaceTB/SmolLM2-360M-Instruct', lm_loss_impl='full', lm_attn_packing_impl='none', lm_attn_flex_block_size=128, lm_chat_template="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}", mp_pixel_shuffle_factor=4, mp_image_token_length=64, max_img_size=2048, resize_to_max_side_len=True, vlm_extra_tokens={'image_token': '<|image|>', 'global_image_token': '<|global_image|>', 'r1c1': '<row_1_col_1>', 'r1c2': '<row_1_col_2>', 'r1c3': '<row_1_col_3>', 'r1c4': '<row_1_col_4>', 'r1c5': '<row_1_col_5>', 'r1c6': '<row_1_col_6>', 'r1c7': '<row_1_col_7>', 'r1c8': '<row_1_col_8>', 'r2c1': '<row_2_col_1>', 'r2c2': '<row_2_col_2>', 'r2c3': '<row_2_col_3>', 'r2c4': '<row_2_col_4>', 'r2c5': '<row_2_col_5>', 'r2c6': '<row_2_col_6>', 'r2c7': '<row_2_col_7>', 'r2c8': '<row_2_col_8>', 'r3c1': '<row_3_col_1>', 'r3c2': '<row_3_col_2>', 'r3c3': '<row_3_col_3>', 'r3c4': '<row_3_col_4>', 'r3c5': '<row_3_col_5>', 'r3c6': '<row_3_col_6>', 'r3c7': '<row_3_col_7>', 'r3c8': '<row_3_col_8>', 'r4c1': '<row_4_col_1>', 'r4c2': '<row_4_col_2>', 'r4c3': '<row_4_col_3>', 'r4c4': '<row_4_col_4>', 'r4c5': '<row_4_col_5>', 'r4c6': '<row_4_col_6>', 'r4c7': '<row_4_col_7>', 'r4c8': '<row_4_col_8>', 'r5c1': '<row_5_col_1>', 'r5c2': '<row_5_col_2>', 'r5c3': '<row_5_col_3>', 'r5c4': '<row_5_col_4>', 'r5c5': '<row_5_col_5>', 'r5c6': '<row_5_col_6>', 'r5c7': '<row_5_col_7>', 'r5c8': '<row_5_col_8>', 'r6c1': '<row_6_col_1>', 'r6c2': '<row_6_col_2>', 'r6c3': '<row_6_col_3>', 'r6c4': '<row_6_col_4>', 'r6c5': '<row_6_col_5>', 'r6c6': '<row_6_col_6>', 'r6c7': '<row_6_col_7>', 'r6c8': '<row_6_col_8>', 'r7c1': '<row_7_col_1>', 'r7c2': '<row_7_col_2>', 'r7c3': '<row_7_col_3>', 'r7c4': '<row_7_col_4>', 'r7c5': '<row_7_col_5>', 'r7c6': '<row_7_col_6>', 'r7c7': '<row_7_col_7>', 'r7c8': '<row_7_col_8>', 'r8c1': '<row_8_col_1>', 'r8c2': '<row_8_col_2>', 'r8c3': '<row_8_col_3>', 'r8c4': '<row_8_col_4>', 'r8c5': '<row_8_col_5>', 'r8c6': '<row_8_col_6>', 'r8c7': '<row_8_col_7>', 'r8c8': '<row_8_col_8>'}, vlm_load_backbone_weights=True, vlm_checkpoint_path='checkpoints', hf_repo_name=None)
+--- Train Config ---
+TrainConfig(lr_mp=0.00512, lr_vision_backbone=5e-05, lr_language_backbone=5e-05, val_size=5000, batch_size=2, gradient_accumulation_steps=8, max_grad_norm=1.0, eval_in_epochs=True, eval_interval=500, stats_log_interval=100, max_training_steps=10000, max_images_per_example=4, max_images_per_knapsack=18, max_sample_length=4096, compile=False, seed=1, resume_from_vlm_checkpoint=False, save_training_state=True, resume_from=None, eval_mask_rows=256, train_dataset_path='HuggingFaceM4/FineVision_concat_shuffled_2', train_dataset_name=('default',), stream_dataset=True, dataset_cache_dir='/root/.cache/finevision_shards', max_cache_gb=30.0, prefetch_shards=1, cache_evict_grace_min=2.0, num_workers=4, relevance_min_rating=1, image_correspondence_min_rating=1, visual_dependency_min_rating=1, formatting_min_rating=1, wandb_entity='arjunsrinivasan', wandb_project='nanoVLM', wandb_group='ab-10k-230m', wandb_tags=('ab', 'arm_A', 'seed_1'), run_name_suffix='ab_A_s1', log_wandb=True, use_lmms_eval=False, lmms_eval_tasks='mmstar,mmmu_val,ocrbench,textvqa_val,docvqa_val,scienceqa,mme,infovqa_val,chartqa', lmms_eval_limit=None, lmms_eval_batch_size=64)
+Getting dataloaders from HuggingFaceM4/FineVision_concat_shuffled_2
+Resize to max side len: True
+[shard_cache] 9997 train / 3 val shards in /root/.cache/finevision_shards, working set ~4.6 GiB, max_cache_gb=30.0
+Val size per GPU: 5000
+Warming up dataloaders...
+Warmup complete.
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from WANDB_API_KEY.
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (9060 > 8192). Running this sequence through the model will result in indexing errors
+wandb: Currently logged in as: arjunsrinivasan to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (11005 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (10156 > 8192). Running this sequence through the model will result in indexing errors
+wandb: setting up run vo33p57s
+wandb: Tracking run with wandb version 0.30.0
+wandb: Run data is saved locally in /workspace/nanoVLM/wandb/run-20260920_133309-vo33p57s
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-133308_ab_A_s1
+wandb: ⭐️ View project at https://wandb.ai/arjunsrinivasan/nanoVLM
+wandb: 🚀 View run at https://wandb.ai/arjunsrinivasan/nanoVLM/runs/vo33p57s
+Loading from backbone weights
+Successfully loaded google/siglip2-base-patch16-512 weights from safetensors. Model has 86,433,024 parameters.
+Extending token embeddings from torch.Size([49152, 576]) to torch.Size([49218, 576])
+Initialized 66 new token embeddings
+Successfully loaded HuggingFaceTB/SmolLM2-135M-Instruct weights from safetensors. Model has 134,553,024 parameters.
+nanoVLM initialized with 228,063,936 parameters
+Training summary: -1 samples, batch size 16
+Validation summary: -1 samples, batch size 16
+Using device: cuda
+Starting training loop
+Starting evaluation
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 0, Val Loss: 2.2372, doc_masked val loss: 1.7586, unmasked val loss: 1.9970, Tokens/s: 7626.54
+Step: 0, Loss: 2.4816, Tokens/s: 8719, fw_bw: 0.603s, data: 0.001s, peak alloc: 34.33 GiB, peak reserved: 35.69 GiB
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (11508 > 8192). Running this sequence through the model will result in indexing errors
+Step: 100, Loss: 0.6381, Tokens/s: 18761, fw_bw: 0.212s, data: 0.001s, peak alloc: 40.23 GiB, peak reserved: 41.64 GiB
+Step: 200, Loss: 0.9754, Tokens/s: 19061, fw_bw: 0.206s, data: 0.000s, peak alloc: 42.49 GiB, peak reserved: 43.91 GiB
+Step: 300, Loss: 1.1983, Tokens/s: 18719, fw_bw: 0.210s, data: 0.001s, peak alloc: 45.40 GiB, peak reserved: 46.84 GiB
+Step: 400, Loss: 1.0020, Tokens/s: 19088, fw_bw: 0.205s, data: 0.001s, peak alloc: 41.52 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 500, Val Loss: 1.1932, doc_masked val loss: 1.0975, unmasked val loss: 1.0915, Tokens/s: 14525.62
+Step: 500, Loss: 0.9983, Tokens/s: 18715, fw_bw: 0.210s, data: 0.001s, peak alloc: 41.52 GiB, peak reserved: 46.84 GiB
+Step: 600, Loss: 1.1458, Tokens/s: 14913, fw_bw: 0.280s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 700, Loss: 1.6217, Tokens/s: 14855, fw_bw: 0.283s, data: 0.001s, peak alloc: 38.61 GiB, peak reserved: 46.84 GiB
+Step: 800, Loss: 1.6207, Tokens/s: 14845, fw_bw: 0.280s, data: 0.001s, peak alloc: 45.40 GiB, peak reserved: 46.84 GiB
+Step: 900, Loss: 0.8894, Tokens/s: 14940, fw_bw: 0.280s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 1000, Val Loss: 1.1885, doc_masked val loss: 1.0651, unmasked val loss: 1.0691, Tokens/s: 13961.29
+Step: 1000, Loss: 2.1348, Tokens/s: 14873, fw_bw: 0.280s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 1100, Loss: 1.1699, Tokens/s: 16673, fw_bw: 0.257s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 1200, Loss: 1.2142, Tokens/s: 16661, fw_bw: 0.258s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 1300, Loss: 1.6864, Tokens/s: 16861, fw_bw: 0.254s, data: 0.000s, peak alloc: 43.58 GiB, peak reserved: 46.84 GiB
+Step: 1400, Loss: 1.6217, Tokens/s: 16639, fw_bw: 0.254s, data: 0.000s, peak alloc: 45.07 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 1500, Val Loss: 1.1324, doc_masked val loss: 1.0489, unmasked val loss: 1.0542, Tokens/s: 22028.97
+Step: 1500, Loss: 0.8638, Tokens/s: 16741, fw_bw: 0.254s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 1600, Loss: 0.9282, Tokens/s: 16735, fw_bw: 0.255s, data: 0.001s, peak alloc: 45.40 GiB, peak reserved: 46.84 GiB
+Step: 1700, Loss: 1.2590, Tokens/s: 16781, fw_bw: 0.254s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 1800, Loss: 0.5966, Tokens/s: 16741, fw_bw: 0.258s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 1900, Loss: 0.6526, Tokens/s: 16944, fw_bw: 0.253s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 2000, Val Loss: 1.1504, doc_masked val loss: 1.0390, unmasked val loss: 1.0463, Tokens/s: 11512.82
+Step: 2000, Loss: 1.7670, Tokens/s: 16634, fw_bw: 0.257s, data: 0.001s, peak alloc: 39.58 GiB, peak reserved: 46.84 GiB
+Step: 2100, Loss: 1.4359, Tokens/s: 16783, fw_bw: 0.253s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 2200, Loss: 0.6586, Tokens/s: 16497, fw_bw: 0.261s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 2300, Loss: 1.5464, Tokens/s: 17003, fw_bw: 0.253s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 2400, Loss: 0.6149, Tokens/s: 16562, fw_bw: 0.255s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 2500, Val Loss: 1.1294, doc_masked val loss: 1.0244, unmasked val loss: 1.0222, Tokens/s: 22847.63
+Step: 2500, Loss: 0.7310, Tokens/s: 16830, fw_bw: 0.252s, data: 0.000s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 2600, Loss: 1.6729, Tokens/s: 18229, fw_bw: 0.217s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 2700, Loss: 1.9473, Tokens/s: 18567, fw_bw: 0.210s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 2800, Loss: 0.6301, Tokens/s: 18749, fw_bw: 0.211s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 2900, Loss: 0.9183, Tokens/s: 18349, fw_bw: 0.215s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 3000, Val Loss: 1.1189, doc_masked val loss: 1.0250, unmasked val loss: 1.0265, Tokens/s: 20098.76
+Step: 3000, Loss: 0.6457, Tokens/s: 18872, fw_bw: 0.203s, data: 0.001s, peak alloc: 38.94 GiB, peak reserved: 46.84 GiB
+Step: 3100, Loss: 0.9523, Tokens/s: 18657, fw_bw: 0.212s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 3200, Loss: 1.1357, Tokens/s: 18824, fw_bw: 0.209s, data: 0.001s, peak alloc: 41.64 GiB, peak reserved: 46.84 GiB
+Step: 3300, Loss: 1.0820, Tokens/s: 18592, fw_bw: 0.212s, data: 0.001s, peak alloc: 39.58 GiB, peak reserved: 46.84 GiB
+Step: 3400, Loss: 1.3449, Tokens/s: 18700, fw_bw: 0.213s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 3500, Val Loss: 1.0960, doc_masked val loss: 1.0089, unmasked val loss: 1.0119, Tokens/s: 18252.18
+Step: 3500, Loss: 0.7436, Tokens/s: 18609, fw_bw: 0.209s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 3600, Loss: 0.7206, Tokens/s: 18079, fw_bw: 0.221s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 3700, Loss: 0.9439, Tokens/s: 18120, fw_bw: 0.220s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 3800, Loss: 0.8146, Tokens/s: 18639, fw_bw: 0.211s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 3900, Loss: 1.2763, Tokens/s: 18836, fw_bw: 0.209s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 4000, Val Loss: 1.0768, doc_masked val loss: 1.0121, unmasked val loss: 1.0061, Tokens/s: 16496.17
+Step: 4000, Loss: 1.1461, Tokens/s: 18505, fw_bw: 0.211s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 4100, Loss: 0.9155, Tokens/s: 18529, fw_bw: 0.215s, data: 0.001s, peak alloc: 39.91 GiB, peak reserved: 46.84 GiB
+WARNING:root:Error processing item: {'images': [<PIL.PngImagePlugin.PngImageFile image mode=RGB size=730x730 at 0x7FDFC6F9BE90>], 'texts': [{'user': 'Please read and extract all text content from this image.', 'assistant': '中共江西省驻沪单位委员会 中共万载县委驻上海流动党员总支委员会 南区会务中心'}, {'user': 'What written content do you see in this image?', 'assistant': '中共江西省驻沪单位委员会 中共万载县委驻上海流动党员总支委会 南区会务中心'}], 'source': 'art', 'relevance_ratings': [5], 'relevance_min': 5, 'visual_dependency_ratings': [5], 'visual_dependency_min': 5, 'image_correspondence_ratings': [3], 'image_correspondence_min': 3, 'formatting_ratings': [4], 'formatting_min': 4}, index: 1: list index out of range
+Step: 4200, Loss: 1.4403, Tokens/s: 18432, fw_bw: 0.215s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 4300, Loss: 1.1543, Tokens/s: 19045, fw_bw: 0.207s, data: 0.000s, peak alloc: 41.96 GiB, peak reserved: 46.84 GiB
+Step: 4400, Loss: 1.1792, Tokens/s: 18285, fw_bw: 0.217s, data: 0.001s, peak alloc: 44.43 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 4500, Val Loss: 1.0801, doc_masked val loss: 0.9862, unmasked val loss: 0.9925, Tokens/s: 18167.51
+Step: 4500, Loss: 1.1531, Tokens/s: 18533, fw_bw: 0.214s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 4600, Loss: 0.9552, Tokens/s: 18946, fw_bw: 0.208s, data: 0.000s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 4700, Loss: 1.0339, Tokens/s: 18806, fw_bw: 0.209s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 4800, Loss: 0.5712, Tokens/s: 18730, fw_bw: 0.206s, data: 0.001s, peak alloc: 39.91 GiB, peak reserved: 46.84 GiB
+Step: 4900, Loss: 0.6639, Tokens/s: 18833, fw_bw: 0.208s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 5000, Val Loss: 1.0886, doc_masked val loss: 0.9815, unmasked val loss: 0.9797, Tokens/s: 16639.99
+Step: 5000, Loss: 1.6424, Tokens/s: 18935, fw_bw: 0.207s, data: 0.000s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 5100, Loss: 2.4330, Tokens/s: 18076, fw_bw: 0.220s, data: 0.001s, peak alloc: 41.20 GiB, peak reserved: 46.84 GiB
+Step: 5200, Loss: 1.2411, Tokens/s: 19079, fw_bw: 0.207s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 5300, Loss: 1.6734, Tokens/s: 18856, fw_bw: 0.210s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 5400, Loss: 1.5992, Tokens/s: 18655, fw_bw: 0.207s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 5500, Val Loss: 1.0525, doc_masked val loss: 0.9733, unmasked val loss: 0.9688, Tokens/s: 24189.78
+Step: 5500, Loss: 1.2103, Tokens/s: 18059, fw_bw: 0.221s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 5600, Loss: 1.0375, Tokens/s: 18175, fw_bw: 0.218s, data: 0.001s, peak alloc: 41.52 GiB, peak reserved: 46.84 GiB
+Step: 5700, Loss: 1.7717, Tokens/s: 18598, fw_bw: 0.207s, data: 0.001s, peak alloc: 44.43 GiB, peak reserved: 46.84 GiB
+Step: 5800, Loss: 0.9297, Tokens/s: 18437, fw_bw: 0.210s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 5900, Loss: 1.3187, Tokens/s: 18792, fw_bw: 0.211s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+WARNING:root:Error processing item: {'images': [<PIL.PngImagePlugin.PngImageFile image mode=RGB size=299x884 at 0x7FDFC6872C00>], 'texts': [{'user': 'Identify all text elements present in this image.', 'assistant': '长宁区司法局北新泾司法所 城市网格 上海市长 社区党 上海市长宁'}, {'user': 'What textual information is displayed in this image?', 'assistant': '长宁区司法局北新泾司法所 上海市长宁 社区党 上海市长 城市网格'}, {'user': 'Please read and extract all text content from this image.', 'assistant': '上海市长宁 社区党 上海市长 城市网格 长宁区司法局北新泾司法所'}], 'source': 'art', 'relevance_ratings': [3], 'relevance_min': 3, 'visual_dependency_ratings': [5], 'visual_dependency_min': 5, 'image_correspondence_ratings': [5], 'image_correspondence_min': 5, 'formatting_ratings': [4], 'formatting_min': 4}, index: 1: list index out of range
+WARNING:root:Error processing item: {'images': [<PIL.PngImagePlugin.PngImageFile image mode=RGB size=299x884 at 0x7FDFC6872C00>], 'texts': [{'user': 'Identify all text elements present in this image.', 'assistant': '长宁区司法局北新泾司法所 城市网格 上海市长 社区党 上海市长宁'}, {'user': 'What textual information is displayed in this image?', 'assistant': '长宁区司法局北新泾司法所 上海市长宁 社区党 上海市长 城市网格'}, {'user': 'Please read and extract all text content from this image.', 'assistant': '上海市长宁 社区党 上海市长 城市网格 长宁区司法局北新泾司法所'}], 'source': 'art', 'relevance_ratings': [3], 'relevance_min': 3, 'visual_dependency_ratings': [5], 'visual_dependency_min': 5, 'image_correspondence_ratings': [5], 'image_correspondence_min': 5, 'formatting_ratings': [4], 'formatting_min': 4}, index: 2: list index out of range
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 6000, Val Loss: 1.0148, doc_masked val loss: 0.9527, unmasked val loss: 0.9455, Tokens/s: 16386.46
+Step: 6000, Loss: 1.0932, Tokens/s: 18849, fw_bw: 0.210s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 6100, Loss: 1.1054, Tokens/s: 18422, fw_bw: 0.216s, data: 0.001s, peak alloc: 39.91 GiB, peak reserved: 46.84 GiB
+Step: 6200, Loss: 1.5455, Tokens/s: 18667, fw_bw: 0.212s, data: 0.001s, peak alloc: 41.52 GiB, peak reserved: 46.84 GiB
+Step: 6300, Loss: 1.1151, Tokens/s: 18456, fw_bw: 0.215s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 6400, Loss: 0.8170, Tokens/s: 18959, fw_bw: 0.207s, data: 0.001s, peak alloc: 39.91 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 6500, Val Loss: 1.0117, doc_masked val loss: 0.9311, unmasked val loss: 0.9338, Tokens/s: 15377.92
+Step: 6500, Loss: 0.8010, Tokens/s: 18781, fw_bw: 0.212s, data: 0.001s, peak alloc: 41.20 GiB, peak reserved: 46.84 GiB
+Step: 6600, Loss: 0.9325, Tokens/s: 18847, fw_bw: 0.208s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+WARNING:root:Error processing item: {'images': [<PIL.PngImagePlugin.PngImageFile image mode=RGB size=522x885 at 0x7FDFC6E50650>], 'texts': [{'user': 'Read and provide all text content from this image.', 'assistant': '中共浦江镇汇北村总支部委员会 上海市卫生村 上海市爱国卫生运动委员会 二〇〇八年十二月 闵行区浦江镇汇北 联合工会委员会 民防工作站 闵行区浦江镇民防办 整洁村 上海市市容环境卫生管理局 二〇〇八年二月'}, {'user': 'Extract and list all text content visible in this image.', 'assistant': '中共浦江镇汇北村总支部委员会 上海市卫生村 上海市爱国卫生运动委员会 2OO八二月 整洁村 山海市市容环境卫生管理局 二OO八二月 闵行区浦江镇汇北 联合工会委员会 民防工作站 闵行区浦江镇民防办'}, {'user': 'Transcribe all visible text from this image.', 'assistant': '中共浦江镇汇北村总支部委员会 上海市卫生村 上海市爱国卫生运动委员会 二〇〇八年十二月 整洁村 上海市市容环境卫生管理局 二〇〇八年二月 闵行区浦江镇汇北 联合工会委员会 民防工作站 闵行区浦江镇民防办'}], 'source': 'art', 'relevance_ratings': [5], 'relevance_min': 5, 'visual_dependency_ratings': [5], 'visual_dependency_min': 5, 'image_correspondence_ratings': [3], 'image_correspondence_min': 3, 'formatting_ratings': [5], 'formatting_min': 5}, index: 1: list index out of range
+WARNING:root:Error processing item: {'images': [<PIL.PngImagePlugin.PngImageFile image mode=RGB size=522x885 at 0x7FDFC6E50650>], 'texts': [{'user': 'Read and provide all text content from this image.', 'assistant': '中共浦江镇汇北村总支部委员会 上海市卫生村 上海市爱国卫生运动委员会 二〇〇八年十二月 闵行区浦江镇汇北 联合工会委员会 民防工作站 闵行区浦江镇民防办 整洁村 上海市市容环境卫生管理局 二〇〇八年二月'}, {'user': 'Extract and list all text content visible in this image.', 'assistant': '中共浦江镇汇北村总支部委员会 上海市卫生村 上海市爱国卫生运动委员会 2OO八二月 整洁村 山海市市容环境卫生管理局 二OO八二月 闵行区浦江镇汇北 联合工会委员会 民防工作站 闵行区浦江镇民防办'}, {'user': 'Transcribe all visible text from this image.', 'assistant': '中共浦江镇汇北村总支部委员会 上海市卫生村 上海市爱国卫生运动委员会 二〇〇八年十二月 整洁村 上海市市容环境卫生管理局 二〇〇八年二月 闵行区浦江镇汇北 联合工会委员会 民防工作站 闵行区浦江镇民防办'}], 'source': 'art', 'relevance_ratings': [5], 'relevance_min': 5, 'visual_dependency_ratings': [5], 'visual_dependency_min': 5, 'image_correspondence_ratings': [3], 'image_correspondence_min': 3, 'formatting_ratings': [5], 'formatting_min': 5}, index: 2: list index out of range
+Step: 6700, Loss: 0.5358, Tokens/s: 18776, fw_bw: 0.211s, data: 0.001s, peak alloc: 39.91 GiB, peak reserved: 46.84 GiB
+Step: 6800, Loss: 0.5694, Tokens/s: 18731, fw_bw: 0.211s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 6900, Loss: 1.1370, Tokens/s: 18699, fw_bw: 0.211s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 7000, Val Loss: 1.0071, doc_masked val loss: 0.9219, unmasked val loss: 0.9205, Tokens/s: 17472.59
+Step: 7000, Loss: 0.6691, Tokens/s: 18544, fw_bw: 0.215s, data: 0.001s, peak alloc: 43.26 GiB, peak reserved: 46.84 GiB
+Step: 7100, Loss: 0.5602, Tokens/s: 18940, fw_bw: 0.208s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 7200, Loss: 0.7133, Tokens/s: 18431, fw_bw: 0.216s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 7300, Loss: 0.5785, Tokens/s: 19043, fw_bw: 0.207s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Step: 7400, Loss: 0.7696, Tokens/s: 18789, fw_bw: 0.210s, data: 0.000s, peak alloc: 45.07 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 7500, Val Loss: 0.9618, doc_masked val loss: 0.9051, unmasked val loss: 0.9149, Tokens/s: 18907.53
+Step: 7500, Loss: 0.4488, Tokens/s: 18673, fw_bw: 0.207s, data: 0.001s, peak alloc: 41.20 GiB, peak reserved: 46.84 GiB
+Step: 7600, Loss: 0.8826, Tokens/s: 19120, fw_bw: 0.206s, data: 0.000s, peak alloc: 39.58 GiB, peak reserved: 46.84 GiB
+Step: 7700, Loss: 0.5442, Tokens/s: 18738, fw_bw: 0.211s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 7800, Loss: 1.1736, Tokens/s: 18635, fw_bw: 0.209s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 7900, Loss: 1.5694, Tokens/s: 19031, fw_bw: 0.207s, data: 0.000s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 8000, Val Loss: 0.9894, doc_masked val loss: 0.9126, unmasked val loss: 0.9015, Tokens/s: 17485.53
+Step: 8000, Loss: 1.5585, Tokens/s: 18568, fw_bw: 0.213s, data: 0.001s, peak alloc: 41.52 GiB, peak reserved: 46.84 GiB
+Step: 8100, Loss: 1.2292, Tokens/s: 18894, fw_bw: 0.209s, data: 0.001s, peak alloc: 41.20 GiB, peak reserved: 46.84 GiB
+Step: 8200, Loss: 0.5972, Tokens/s: 18402, fw_bw: 0.217s, data: 0.001s, peak alloc: 41.52 GiB, peak reserved: 46.84 GiB
+Step: 8300, Loss: 1.1674, Tokens/s: 18550, fw_bw: 0.213s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 8400, Loss: 0.7975, Tokens/s: 18906, fw_bw: 0.208s, data: 0.001s, peak alloc: 43.58 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 8500, Val Loss: 0.9349, doc_masked val loss: 0.9016, unmasked val loss: 0.8930, Tokens/s: 19476.88
+Step: 8500, Loss: 0.4707, Tokens/s: 19003, fw_bw: 0.208s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 8600, Loss: 1.1351, Tokens/s: 18656, fw_bw: 0.214s, data: 0.001s, peak alloc: 43.26 GiB, peak reserved: 46.84 GiB
+Step: 8700, Loss: 0.7610, Tokens/s: 18621, fw_bw: 0.212s, data: 0.001s, peak alloc: 45.40 GiB, peak reserved: 46.84 GiB
+Step: 8800, Loss: 0.5651, Tokens/s: 18905, fw_bw: 0.205s, data: 0.001s, peak alloc: 39.38 GiB, peak reserved: 46.84 GiB
+Step: 8900, Loss: 1.0240, Tokens/s: 18578, fw_bw: 0.215s, data: 0.001s, peak alloc: 44.10 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 9000, Val Loss: 0.9597, doc_masked val loss: 0.8966, unmasked val loss: 0.8958, Tokens/s: 18942.82
+Step: 9000, Loss: 0.7844, Tokens/s: 18111, fw_bw: 0.218s, data: 0.001s, peak alloc: 39.91 GiB, peak reserved: 46.84 GiB
+Step: 9100, Loss: 0.7632, Tokens/s: 18344, fw_bw: 0.216s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 9200, Loss: 0.7464, Tokens/s: 18752, fw_bw: 0.209s, data: 0.001s, peak alloc: 45.40 GiB, peak reserved: 46.84 GiB
+Step: 9300, Loss: 0.5886, Tokens/s: 18338, fw_bw: 0.217s, data: 0.001s, peak alloc: 41.20 GiB, peak reserved: 46.84 GiB
+Step: 9400, Loss: 0.7514, Tokens/s: 18439, fw_bw: 0.216s, data: 0.001s, peak alloc: 45.07 GiB, peak reserved: 46.84 GiB
+Starting evaluation
+Evaluated 65 batches
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Step: 9500, Val Loss: 0.9758, doc_masked val loss: 0.8931, unmasked val loss: 0.8788, Tokens/s: 24213.79
+Step: 9500, Loss: 0.6879, Tokens/s: 18690, fw_bw: 0.210s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Step: 9600, Loss: 1.7077, Tokens/s: 18317, fw_bw: 0.217s, data: 0.001s, peak alloc: 42.49 GiB, peak reserved: 46.84 GiB
+Step: 9700, Loss: 1.2412, Tokens/s: 18676, fw_bw: 0.212s, data: 0.001s, peak alloc: 43.78 GiB, peak reserved: 46.84 GiB
+Step: 9800, Loss: 0.8361, Tokens/s: 18556, fw_bw: 0.212s, data: 0.001s, peak alloc: 45.07 GiB, peak reserved: 46.84 GiB
+Step: 9900, Loss: 0.9881, Tokens/s: 18440, fw_bw: 0.216s, data: 0.001s, peak alloc: 42.81 GiB, peak reserved: 46.84 GiB
+Epoch: 1, Step: 10000/10000, Train Loss: 1.1137 | Time: 25006.05s | T/s: 15294.69
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (11005 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (9060 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (10156 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+Final full val pass: doc_masked val loss: 0.9272, unmasked val loss: 0.9257
+Average time per epoch: 25006.05s
+Average time per sample: 0.1563s
+wandb: updating run metadata
+wandb: uploading output.log; uploading wandb-summary.json; uploading config.yaml
+wandb: uploading history steps 10000-10000, summary, console lines 172-173
+wandb: 
+wandb: Run history:
+wandb:                           batch_loss ▆▃▂▆█▂▄▂▂▅▂▂▇▂▂▂▄▆▃▃▁▅▅▅▃▄▆▁▇▃▄▂▅▅▁▁▂▅▃▇
+wandb:                       epoch_duration ▁
+wandb:                           epoch_loss ▁
+wandb:              epoch_tokens_per_second ▁
+wandb:                            grad_norm ▂▃▂▂▂▂▂▂▂▃▂▂▂▁▂▂▂▃▁▁▂▂▃▃▁▂▃▄▄█▅▆▄▆▆▆▆▆█▅
+wandb:    training_stats/avg_data_load_time █▁▃▂▂▂▁▂▂▂▃▃▂▂▂▁▂▂▂▂▂▂▃▃▃▃▃▂▂▂▂▂▂▃▂▂▄▃▃▂
+wandb:        training_stats/avg_fw_bw_time ▂▂███▆▆▅▆▅▂▂▁▂▁▂▂▃▂▂▁▁▃▂▁▂▂▁▂▂▁▁▂▁▁▂▁▁▂▂
+wandb: training_stats/avg_images_per_sample █▂▁▂▁▂▁▁▂▂▂▂▁▁▂▂▁▂▂▁▂▂▁▂▁▂▂▂▂▁▂▂▂▁▂▂▁▂▁▂
+wandb: training_stats/avg_post_process_time ▃▃▄▄▄▃▆▃▂▃█▆▂█▃▃▃▃▅▄▄▃▂█▄▃▃▃▅▃▂▃▃█▃▅▁▁▃▃
+wandb: training_stats/avg_tokens_per_second ▇█▇█▇▁▄▄▄▄▅▇▇▇█▆▆█▇▇█▇█▆▇▇▇▇▇▇█▇█▇█▇██▇▇
+wandb:                                  +12 ...
+wandb: 
+wandb: Run summary:
+wandb:                 avg_epoch_time 25006.04808
+wandb:            avg_time_per_sample 0.15629
+wandb:                     batch_loss 0.99324
+wandb:                  best_val_loss 0.9349
+wandb:                 epoch_duration 25006.04808
+wandb:                     epoch_loss 1.11367
+wandb:        epoch_tokens_per_second 15294.6949
+wandb:                      grad_norm 2.12593
+wandb:         mean_tokens_per_second 18075.76679
+wandb: overall_peak_mem_allocated_gib 45.39672
+wandb:                            +17 ...
+wandb: 
+wandb: 🚀 View run nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-133308_ab_A_s1 at: https://wandb.ai/arjunsrinivasan/nanoVLM/runs/vo33p57s
+wandb: ⭐️ View project at: https://wandb.ai/arjunsrinivasan/nanoVLM
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260920_133309-vo33p57s/logs

@@ -1,0 +1,93 @@
+1789858645.818035576 --- VLM Config ---
+1789858645.823248041 VLMConfig(vit_hidden_dim=768, vit_inter_dim=3072, vit_patch_size=16, vit_img_size=512, vit_n_heads=12, vit_dropout=0.0, vit_n_blocks=12, vit_ln_eps=1e-06, vit_cls_flag=False, vit_model_type='google/siglip2-base-patch16-512', lm_hidden_dim=960, lm_inter_dim=2560, lm_rms_eps=1e-05, lm_re_base=100000, lm_max_position_embeddings=8192, lm_base_vocab_size=49152, extra_token_amount=66, lm_vocab_size=49218, lm_n_heads=15, lm_n_kv_heads=5, lm_dropout=0.0, lm_n_blocks=32, lm_attn_scaling=1.0, lm_max_length=4096, lm_use_tokens=False, lm_tie_weights=True, lm_model_type='HuggingFaceTB/SmolLM2-135M-Instruct', lm_tokenizer='HuggingFaceTB/SmolLM2-360M-Instruct', lm_loss_impl='gather', lm_attn_packing_impl='flex_document_causal', lm_attn_flex_block_size=128, lm_chat_template="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}", mp_pixel_shuffle_factor=4, mp_image_token_length=64, max_img_size=2048, resize_to_max_side_len=True, vlm_extra_tokens={'image_token': '<|image|>', 'global_image_token': '<|global_image|>', 'r1c1': '<row_1_col_1>', 'r1c2': '<row_1_col_2>', 'r1c3': '<row_1_col_3>', 'r1c4': '<row_1_col_4>', 'r1c5': '<row_1_col_5>', 'r1c6': '<row_1_col_6>', 'r1c7': '<row_1_col_7>', 'r1c8': '<row_1_col_8>', 'r2c1': '<row_2_col_1>', 'r2c2': '<row_2_col_2>', 'r2c3': '<row_2_col_3>', 'r2c4': '<row_2_col_4>', 'r2c5': '<row_2_col_5>', 'r2c6': '<row_2_col_6>', 'r2c7': '<row_2_col_7>', 'r2c8': '<row_2_col_8>', 'r3c1': '<row_3_col_1>', 'r3c2': '<row_3_col_2>', 'r3c3': '<row_3_col_3>', 'r3c4': '<row_3_col_4>', 'r3c5': '<row_3_col_5>', 'r3c6': '<row_3_col_6>', 'r3c7': '<row_3_col_7>', 'r3c8': '<row_3_col_8>', 'r4c1': '<row_4_col_1>', 'r4c2': '<row_4_col_2>', 'r4c3': '<row_4_col_3>', 'r4c4': '<row_4_col_4>', 'r4c5': '<row_4_col_5>', 'r4c6': '<row_4_col_6>', 'r4c7': '<row_4_col_7>', 'r4c8': '<row_4_col_8>', 'r5c1': '<row_5_col_1>', 'r5c2': '<row_5_col_2>', 'r5c3': '<row_5_col_3>', 'r5c4': '<row_5_col_4>', 'r5c5': '<row_5_col_5>', 'r5c6': '<row_5_col_6>', 'r5c7': '<row_5_col_7>', 'r5c8': '<row_5_col_8>', 'r6c1': '<row_6_col_1>', 'r6c2': '<row_6_col_2>', 'r6c3': '<row_6_col_3>', 'r6c4': '<row_6_col_4>', 'r6c5': '<row_6_col_5>', 'r6c6': '<row_6_col_6>', 'r6c7': '<row_6_col_7>', 'r6c8': '<row_6_col_8>', 'r7c1': '<row_7_col_1>', 'r7c2': '<row_7_col_2>', 'r7c3': '<row_7_col_3>', 'r7c4': '<row_7_col_4>', 'r7c5': '<row_7_col_5>', 'r7c6': '<row_7_col_6>', 'r7c7': '<row_7_col_7>', 'r7c8': '<row_7_col_8>', 'r8c1': '<row_8_col_1>', 'r8c2': '<row_8_col_2>', 'r8c3': '<row_8_col_3>', 'r8c4': '<row_8_col_4>', 'r8c5': '<row_8_col_5>', 'r8c6': '<row_8_col_6>', 'r8c7': '<row_8_col_7>', 'r8c8': '<row_8_col_8>'}, vlm_load_backbone_weights=True, vlm_checkpoint_path='checkpoints', hf_repo_name=None)
+1789858645.829097785 --- Train Config ---
+1789858645.833503256 TrainConfig(lr_mp=0.00512, lr_vision_backbone=5e-05, lr_language_backbone=5e-05, val_size=5000, batch_size=2, gradient_accumulation_steps=8, max_grad_norm=1.0, eval_in_epochs=False, eval_interval=500, stats_log_interval=25, max_training_steps=300, max_images_per_example=4, max_images_per_knapsack=18, max_sample_length=4096, compile=True, seed=0, resume_from_vlm_checkpoint=False, save_training_state=False, resume_from=None, eval_mask_rows=0, train_dataset_path='HuggingFaceM4/FineVision_concat_shuffled_2', train_dataset_name=('default',), stream_dataset=True, dataset_cache_dir='/root/.cache/finevision_shards', max_cache_gb=30.0, prefetch_shards=1, cache_evict_grace_min=2.0, num_workers=4, relevance_min_rating=1, image_correspondence_min_rating=1, visual_dependency_min_rating=1, formatting_min_rating=1, wandb_entity='arjunsrinivasan', wandb_project='nanoVLM', wandb_group='speed-230m', wandb_tags=('speed', 'arm_C'), run_name_suffix='speed_C_r1', log_wandb=True, use_lmms_eval=False, lmms_eval_tasks='mmstar,mmmu_val,ocrbench,textvqa_val,docvqa_val,scienceqa,mme,infovqa_val,chartqa', lmms_eval_limit=None, lmms_eval_batch_size=64)
+1789858645.838974121 Getting dataloaders from HuggingFaceM4/FineVision_concat_shuffled_2
+1789858645.842720663 Resize to max side len: True
+1789858647.014716344 [shard_cache] 9997 train / 3 val shards in /root/.cache/finevision_shards, working set ~4.6 GiB, max_cache_gb=30.0
+1789858647.291994338 Val size per GPU: 5000
+1789858647.296664660 Warming up dataloaders...
+1789858653.449948388 Warmup complete.
+1789858653.608803460 wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from WANDB_API_KEY.
+1789858654.436943747 wandb: Currently logged in as: arjunsrinivasan to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+1789858655.130322616 wandb: setting up run raj2zkpp
+1789858655.317878536 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (9060 > 8192). Running this sequence through the model will result in indexing errors
+1789858655.674840179 wandb: Tracking run with wandb version 0.30.0
+1789858655.678857297 wandb: Run data is saved locally in /workspace/nanoVLM/wandb/run-20260919_225734-raj2zkpp
+1789858655.683270563 wandb: Run `wandb offline` to turn off syncing.
+1789858655.687463955 wandb: Syncing run nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_300_lr_vision_5e-05-language_5e-05-0.00512_0919-225733_speed_C_r1
+1789858655.692122013 wandb: ⭐️ View project at https://wandb.ai/arjunsrinivasan/nanoVLM
+1789858655.696032374 wandb: 🚀 View run at https://wandb.ai/arjunsrinivasan/nanoVLM/runs/raj2zkpp
+1789858655.822408108 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (10156 > 8192). Running this sequence through the model will result in indexing errors
+1789858655.909072009 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (11005 > 8192). Running this sequence through the model will result in indexing errors
+1789858656.856169817 Loading from backbone weights
+1789858658.579303939 Successfully loaded google/siglip2-base-patch16-512 weights from safetensors. Model has 86,433,024 parameters.
+1789858665.890505350 Extending token embeddings from torch.Size([49152, 576]) to torch.Size([49218, 576])
+1789858665.912700296 Initialized 66 new token embeddings
+1789858666.056035343 Successfully loaded HuggingFaceTB/SmolLM2-135M-Instruct weights from safetensors. Model has 134,553,024 parameters.
+1789858666.167719085 nanoVLM initialized with 228,063,936 parameters
+1789858666.171428875 Training summary: -1 samples, batch size 16
+1789858666.175651727 Validation summary: -1 samples, batch size 16
+1789858666.180683209 Using device: cuda
+1789858666.750187887 Starting training loop
+1789858682.982935349 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+1789858717.321821521 Step: 0, Loss: 1.9887, Tokens/s: 2760, fw_bw: 6.284s, data: 0.001s, peak alloc: 26.49 GiB, peak reserved: 26.55 GiB
+1789858724.623534529 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (11508 > 8192). Running this sequence through the model will result in indexing errors
+1789858732.285698567 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8] torch._dynamo hit config.recompile_limit (8)
+1789858732.290384467 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8]    function: 'forward' (/workspace/nanoVLM/models/vision_language_model.py:62)
+1789858732.292551303 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8]    last reason: 0/6: len(images[1]) == 1                                      # images = [img for sublist in images for img in sublist]  # models/vision_language_model.py:54 in _process_images
+1789858732.296785027 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8] User stack trace:
+1789858732.298721399 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8]   File "/workspace/nanoVLM/models/vision_language_model.py", line 63, in forward
+1789858732.303251195 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8]     images_tensor = self._process_images(images, input_ids.device)
+1789858732.307797862 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8]   File "/workspace/nanoVLM/models/vision_language_model.py", line 54, in _process_images
+1789858732.310452133 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8]     images = [img for sublist in images for img in sublist]
+1789858732.312453962 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+1789858732.316703589 W0919 22:58:52.272000 49873 .venv/lib/python3.12/site-packages/torch/_dynamo/convert_frame.py:2008] [0/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+1789858769.249527229 Step: 25, Loss: 1.8113, Tokens/s: 21692, fw_bw: 0.216s, data: 0.001s, peak alloc: 35.72 GiB, peak reserved: 35.79 GiB
+1789858814.207936013 Step: 50, Loss: 0.8686, Tokens/s: 22528, fw_bw: 0.183s, data: 0.001s, peak alloc: 31.33 GiB, peak reserved: 35.79 GiB
+1789858860.398497801 Step: 75, Loss: 1.6571, Tokens/s: 22181, fw_bw: 0.187s, data: 0.001s, peak alloc: 29.47 GiB, peak reserved: 35.79 GiB
+1789858906.002335884 Step: 100, Loss: 1.7910, Tokens/s: 22347, fw_bw: 0.184s, data: 0.001s, peak alloc: 33.85 GiB, peak reserved: 35.79 GiB
+1789858949.415776147 Step: 125, Loss: 0.8184, Tokens/s: 23288, fw_bw: 0.172s, data: 0.001s, peak alloc: 30.22 GiB, peak reserved: 35.79 GiB
+1789858992.849056176 Step: 150, Loss: 1.9938, Tokens/s: 23018, fw_bw: 0.172s, data: 0.001s, peak alloc: 34.18 GiB, peak reserved: 35.79 GiB
+1789859034.377403783 Step: 175, Loss: 2.2026, Tokens/s: 24064, fw_bw: 0.165s, data: 0.001s, peak alloc: 35.08 GiB, peak reserved: 35.79 GiB
+1789859076.025409863 Step: 200, Loss: 1.4644, Tokens/s: 24308, fw_bw: 0.163s, data: 0.001s, peak alloc: 31.51 GiB, peak reserved: 35.79 GiB
+1789859121.075184741 Step: 225, Loss: 1.0460, Tokens/s: 22225, fw_bw: 0.179s, data: 0.001s, peak alloc: 31.21 GiB, peak reserved: 35.79 GiB
+1789859162.799964521 Step: 250, Loss: 1.2279, Tokens/s: 23934, fw_bw: 0.167s, data: 0.001s, peak alloc: 31.58 GiB, peak reserved: 35.79 GiB
+1789859209.595607232 Step: 275, Loss: 0.5775, Tokens/s: 21528, fw_bw: 0.190s, data: 0.001s, peak alloc: 38.29 GiB, peak reserved: 38.37 GiB
+1789859252.800669033 Epoch: 1, Step: 300/300, Train Loss: 1.3483 | Time: 586.05s | T/s: 19577.08
+1789859252.808340553 Average time per epoch: 586.05s
+1789859252.813092347 Average time per sample: 0.1221s
+1789859252.918728958 wandb: updating run metadata
+1789859254.326938754 wandb: uploading output.log; uploading wandb-summary.json; uploading config.yaml
+1789859254.829333039 wandb: uploading history steps 292-299, summary, console lines 32-34
+1789859255.263622332 wandb: 
+1789859255.267573731 wandb: Run history:
+1789859255.271760519 wandb:                           batch_loss ▃▁▃▂▂▄▂▁▄▅▂▃▅▇▄▆▄▁▇▃▂▅▃▆▄▄▁▇▃█▂▃▃▂▃▁▇▃▄▅
+1789859255.274883420 wandb:                       epoch_duration ▁
+1789859255.278419253 wandb:                           epoch_loss ▁
+1789859255.282709656 wandb:              epoch_tokens_per_second ▁
+1789859255.286727990 wandb:                            grad_norm █▃▁▅▂▂▂▄▃▃▂▂▃▂▂▃▂▁▁▅▂▁▃▁▂▂▂▃▃▄▂▃▂▂▃▁▂▄▃▂
+1789859255.289910591 wandb:    training_stats/avg_data_load_time █▂▃▃▃▁▁▁▁▂▁▃
+1789859255.293034910 wandb:        training_stats/avg_fw_bw_time █▁▁▁▁▁▁▁▁▁▁▁
+1789859255.297251841 wandb: training_stats/avg_images_per_sample █▄▁▂▃▂▃▂▂▄▂▃
+1789859255.301680567 wandb: training_stats/avg_post_process_time ▁▆▄▆▆▇▇▅▇█▅▆
+1789859255.305943108 wandb: training_stats/avg_tokens_per_second ▁▇▇▇▇████▇█▇
+1789859255.311247978 wandb:                                   +7 ...
+1789859255.315491834 wandb: 
+1789859255.319226853 wandb: Run summary:
+1789859255.321735924 wandb:                 avg_epoch_time 586.04996
+1789859255.324437081 wandb:            avg_time_per_sample 0.12209
+1789859255.327443329 wandb:                     batch_loss 1.59991
+1789859255.331733136 wandb:                  best_val_loss inf
+1789859255.335758034 wandb:                 epoch_duration 586.04996
+1789859255.340160139 wandb:                     epoch_loss 1.34831
+1789859255.345297273 wandb:        epoch_tokens_per_second 19577.08189
+1789859255.349085364 wandb:                      grad_norm 0.73308
+1789859255.352576178 wandb:         mean_tokens_per_second 21156.14978
+1789859255.356564898 wandb: overall_peak_mem_allocated_gib 38.2929
+1789859255.359625382 wandb:                            +12 ...
+1789859255.362353812 wandb: 
+1789859255.364928910 wandb: 🚀 View run nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_300_lr_vision_5e-05-language_5e-05-0.00512_0919-225733_speed_C_r1 at: https://wandb.ai/arjunsrinivasan/nanoVLM/runs/raj2zkpp
+1789859255.369196125 wandb: ⭐️ View project at: https://wandb.ai/arjunsrinivasan/nanoVLM
+1789859255.373618662 wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+1789859255.377366547 wandb: Find logs at: ./wandb/run-20260919_225734-raj2zkpp/logs
