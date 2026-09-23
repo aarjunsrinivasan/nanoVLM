@@ -1,10 +1,65 @@
-# nanoVLM
+# nanoVLM — training-path fork
 
 ![nanoVLM](assets/nanoVLM.png)
 
 <a target="_blank" href="https://colab.research.google.com/github/huggingface/nanoVLM/blob/main/nanoVLM.ipynb">
   <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
 </a>
+
+A fork of [huggingface/nanoVLM](https://github.com/huggingface/nanoVLM), whose model and training
+loop are kept intact. What this fork adds is on the training path: cross-document attention masking
+for packed sequences (upstream lets packed samples attend into their unrelated neighbours, which is
+a correctness bug, not a tuning knob), a gather-based loss that skips the vocab projection on
+masked positions, exact seeded checkpoint-resume, and an evaluator that scores every arm under
+*both* attention masks so no configuration is judged on its own home turf.
+
+Each change was measured before it was believed. The numbers, the run logs, and the scripts that
+reproduce them are below and under [`eval/h100/`](eval/h100/).
+
+## What this fork changed, and what it's worth
+
+Measured on 1× H100 at ~230M params (SmolLM2-135M-Instruct + siglip2-base-512), two seeds per arm, 10k steps each.
+Arms differ only in `--loss_impl`, `--attn_packing_impl` and `--compile`; within a seed both arms train on
+byte-identical batches. "upstream" is this code run with upstream's settings, not a checkout of upstream — upstream
+cannot train on torch 2.14 at all ([issue #80](https://github.com/huggingface/nanoVLM/issues/80), still open).
+
+| | upstream recipe | this fork | notes |
+|---|---|---|---|
+| val loss, per-document | 0.9216 | **0.8994** | lower is better; gap 0.0222 vs a 0.0134 seed spread |
+| val loss, upstream's unmasked metric | 0.9201 | 0.9147 | gap 0.0054, **inside** the spread — no claim |
+| throughput | 1.00× | **1.2–1.7×** | varies with which image-tile shapes compile first, see below |
+| peak memory saved | — | **−10.1 GiB** | 48.6→38.4 (seed 0), 46.8→36.8 (seed 1); 7.6 GiB of it from the loss path |
+
+**The paired view, which is the stronger evidence.** Two seeds is too few to lean on a difference of
+averages, so the comparison that carries weight is the paired one. Within a seed the two arms train on
+byte-identical batches, which makes them comparable step for step; every 500 steps both are scored by
+the same evaluator on the same 256 validation rows. The fork has the lower per-document loss at **39 of
+those 40 points** (20 evals × 2 seeds), the single exception being step 0, before any training has
+happened. A sign test on that gives p = 7.5e-11, but consecutive checkpoints of one run are strongly
+correlated, so treat it as a statement about how consistent the ordering is, not as significance at
+that level. Full tables in the [10k A/B write-up](eval/h100/ab_10k_230m/README.md).
+
+**Which change caused what.** The quality gain can only come from the packed-row attention fix:
+`lm_loss_impl='gather'` is mathematically identical to upstream's (`tests/test_vision_language_model_loss.py` checks
+the loss and every gradient at 1e-5) and `--compile` does not change the math either, so those two are the speed and
+memory half. Under upstream's own unmasked metric the arms are indistinguishable
+— that was a pre-registered check and it did not pass.
+
+
+Write-ups, run logs and the scripts that reproduce them:
+[10k A/B](eval/h100/ab_10k_230m/README.md) · [speed](eval/h100/speed_230m/README.md) ·
+[sizing](eval/h100/phase0_230m/summary.md) · [attention masking](eval/h100/attn_packing.md) ·
+[loss path](eval/h100/loss_gather_ab.md)
+
+## Upstream nanoVLM
+
+Everything from here down is upstream's documentation for upstream's repository, kept as-is.
+
+nanoVLM is the simplest repository for training/finetuning a small sized Vision-Language Model with a lightweight implementation in pure PyTorch. The code itself is very readable and approachable, the model consists of a Vision Backbone (`models/vision_transformer.py` ~150 lines), Language Decoder (`models/language_model.py` ~250 lines), Modality Projection (`models/modality_projection.py` ~50 lines) and the VLM itself (`models/vision_language_model.py` ~100 lines) and a simple training loop (`train.py` ~200 lines).
+
+Similar to Andrej Karpathy's nanoGPT, we wanted to equip the community with a very simple implementation and training script for Vision Language Models. We do not claim this to be a new SOTA model, rather an educational effort that packs quite a bit of punch if you have the right hardware! You should be able to tweak and play around with the code in no time.
+
+Upstream's release announcements, kept for reference:
 
 ---
 
@@ -22,37 +77,6 @@
 > We have pushed some breaking changes to the repository on June 4, 2025. To enable us to do smarter packing, we refactored the way image and text embeddings are combined. To keep everything as smooth as possible, we have trained a new nanoVLM-450M with this new pipeline, while leaving the old nanoVLM-222M compatible with the old pipeline If you clone this repository now or pull the updated to your local machine, the default will be the new 450M Model. If you would like a simpler understanding and a simpler codebase, you can use the v0.1 release. This works out of the box with the old 222M model.
 
 ---
-
-nanoVLM is the simplest repository for training/finetuning a small sized Vision-Language Model with a lightweight implementation in pure PyTorch. The code itself is very readable and approachable, the model consists of a Vision Backbone (`models/vision_transformer.py` ~150 lines), Language Decoder (`models/language_model.py` ~250 lines), Modality Projection (`models/modality_projection.py` ~50 lines) and the VLM itself (`models/vision_language_model.py` ~100 lines) and a simple training loop (`train.py` ~200 lines).
-
-Similar to Andrej Karpathy's nanoGPT, we wanted to equip the community with a very simple implementation and training script for Vision Language Models. We do not claim this to be a new SOTA model, rather an educational effort that packs quite a bit of punch if you have the right hardware! You should be able to tweak and play around with the code in no time.
-
-
-## This fork: what the training-path changes are worth
-
-Measured on 1× H100 at ~230M params (SmolLM2-135M-Instruct + siglip2-base-512), two seeds per arm, 10k steps each.
-Arms differ only in `--loss_impl`, `--attn_packing_impl` and `--compile`; within a seed both arms train on
-byte-identical batches. "upstream" is this code run with upstream's settings, not a checkout of upstream — upstream
-cannot train on torch 2.14 at all ([issue #80](https://github.com/huggingface/nanoVLM/issues/80), still open).
-
-| | upstream recipe | this fork | notes |
-|---|---|---|---|
-| val loss, per-document | 0.9216 | **0.8994** | gap 0.0222 vs a 0.0134 seed spread; fork ahead at 39/40 checkpoints |
-| val loss, upstream's unmasked metric | 0.9201 | 0.9147 | gap 0.0054, **inside** the spread — no claim |
-| throughput | 1.00× | **1.2–1.7×** | varies with which image-tile shapes compile first, see below |
-| peak memory saved | — | **−10.1 GiB** | 48.6→38.4 (seed 0), 46.8→36.8 (seed 1); 7.6 GiB of it from the loss path |
-
-The quality gain comes from the packed-row attention fix, not the loss path: `lm_loss_impl='gather'` is
-mathematically identical to upstream's (`tests/test_vision_language_model_loss.py` checks loss and all gradients at
-1e-5), and `--compile` does not change the math either. Both arms are scored by one evaluator under *both* attention
-masks, so neither is judged on its own home turf. With n=2 seeds the unmasked result is reported as a failure rather
-than argued around, and the per-phase `fw+bw` timings in the write-ups are labelled as the CPU-launch-time proxies
-they were.
-
-Write-ups, run logs and the scripts that reproduce them:
-[10k A/B](eval/h100/ab_10k_230m/README.md) · [speed](eval/h100/speed_230m/README.md) ·
-[sizing](eval/h100/phase0_230m/summary.md) · [attention masking](eval/h100/attn_packing.md) ·
-[loss path](eval/h100/loss_gather_ab.md)
 
 ## What can nanoVLM do?
 
