@@ -50,7 +50,8 @@ Steady numbers are over steps 100–275.
 | C | 22.8k (1.54×) | 0.175 s | 0.047 s, rising to 0.094 | 2.28 (1.17×) | 34.2 GiB |
 
 Notes:
-- **A, steps 0–90:** a CPU-bound data-counting job ran at the same time and slowed A's first ~90 steps (fw_bw 0.5 s). Those intervals are excluded.
+- **`fw_bw` is CPU launch time, not device time.** It comes from `train.py`'s `avg_fw_bw_time`, which at the time was stopped before any device sync, so the GPU tail landed in `post_process` instead (see `../speed_230m/README.md` †). Since C is compiled and A/B are not, and `torch.compile` reduces launch cost specifically, the `0.284 → 0.175` narrowing overstates the kernel-time effect. `tok/s` and `wall s/step` are unaffected, and the sizing decisions on this page rest on memory and wall clock, not on this column.
+- **A, steps 0–90:** a CPU-bound data-counting job ran at the same time and slowed A's first ~90 steps (fw_bw 0.5 s). Those intervals are excluded. Nothing in these scripts enforces machine idleness; that contamination was caught by reading the logs, not by the harness.
 - **C recompiles:** 8 recompiles, all within the first ~65 s of the loop (about step 5). Each came from a new image-tile count (`images[i][0]` size). C hit `recompile_limit` (8) at about step 5. After that, throughput held steady at 22–24k tok/s through step 300. Whether rarely seen shapes fall back to eager over 10k steps still needs watching.
 - **C is data-starved with 2 workers:** data wait rises from 0.017 to 0.094 s per micro-batch. That is why its 1.54× GPU-side speedup shrinks to 1.17× in wall time.
 

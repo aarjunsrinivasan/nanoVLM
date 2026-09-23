@@ -5,6 +5,7 @@ Usage: python eval/h100/ab_10k_230m/analyze.py <dir with A_s0_try0.log, C_s0_try
 The decision rule, fixed before the runs: the fork's improvement counts only if the gap between the arms is larger
 than the spread between seeds within an arm.
 """
+import math
 import os
 import re
 import statistics as st
@@ -61,6 +62,30 @@ def main(d):
         verdict = "larger than the seed spread" if abs(gap) > spread else "WITHIN the seed spread, so not conclusive"
         print(f"- **{metric}**: mean A {st.mean(per_arm['A']):.4f}, mean C {st.mean(per_arm['C']):.4f}, "
               f"gap {gap:+.4f} (fork better when positive); largest within-arm seed spread {spread:.4f} → {verdict}")
+
+    print("\n## Paired checkpoint comparison (doc-masked, 256 rows)\n")
+    wins = losses = 0
+    for seed in SEEDS:
+        if ("A", seed) not in runs or ("C", seed) not in runs:
+            continue
+        a = {s: d for s, d, _ in runs[("A", seed)]["evals"]}
+        c = {s: d for s, d, _ in runs[("C", seed)]["evals"]}
+        shared = sorted(set(a) & set(c))
+        w = sum(1 for s in shared if c[s] < a[s])
+        wins += w
+        losses += len(shared) - w
+        print(f"- seed {seed}: fork ahead at {w} of {len(shared)} checkpoints")
+    n = wins + losses
+    if n:
+        # Two-sided sign test against "the arms are indistinguishable at any given checkpoint".
+        # math.comb keeps this exact, so scipy is not needed.
+        tail = sum(math.comb(n, k) for k in range(min(wins, losses) + 1))
+        p = min(1.0, 2 * tail / 2 ** n)
+        print(f"- **combined: {wins} of {n}**, two-sided sign test p = {p:.2g}")
+        print("- Caveat: these checkpoints come from only two training runs per arm and are serially correlated "
+              "(a model ahead at step 4000 is very likely still ahead at 4500), so the independence the sign test "
+              "assumes does not hold. Read the p-value as a description of how consistent the ordering is, not as "
+              "evidence at that confidence. The pre-registered gap-vs-spread rule above remains the actual decision.")
 
     print("\n## Val loss over training (doc-masked, 256 rows)\n")
     steps = sorted({s for r in runs.values() for s, _, _ in r["evals"]})

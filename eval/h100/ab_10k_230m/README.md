@@ -8,6 +8,16 @@ Does the fork's training path change **what the model learns**, or only how fast
 | **A, upstream** | `--loss_impl full --attn_packing_impl none` (eager) |
 | **C, fork** | `--loss_impl gather --attn_packing_impl flex_document_causal --compile` |
 
+**What "A, upstream" means here.** Arm A is this fork's code run with upstream's settings — the unfused loss, no
+document masking, no compile. It is *not* a checkout of upstream `4e0c096`, which cannot run on torch 2.14 at all:
+upstream passes both `attn_mask` and `is_causal=True` to `scaled_dot_product_attention`, which raises
+`RuntimeError: _scaled_dot_product_attention: Explicit attn_mask should not be set when is_causal=True` on every
+training step (reported upstream as [issue #80](https://github.com/huggingface/nanoVLM/issues/80), still open; fixed
+in this fork by `55c9928`). Arm A therefore also carries that fix and the local shard cache. Both are orthogonal to
+what is being measured — neither touches the loss math, the attention mask semantics, or the data order — so A remains
+the right control for the masking and loss claims, but the comparison is *upstream's training recipe*, not upstream's
+tree.
+
 Everything else is identical: `HuggingFaceTB/SmolLM2-135M-Instruct` + siglip2-base-patch16-512 (228,063,936 params),
 micro-batch 2 × grad-accum 8, 4 dataloader workers, cosine schedule over the full 10k steps, FineVision.
 **Within a seed both arms train on byte-identical batches** (same seed, same data pipeline); the step-100/200/300
@@ -46,7 +56,11 @@ helps nor hurts under the metric that rewards reading unrelated neighbours.
 
 Per-checkpoint doc-masked val loss (256 rows, every 500 steps) has the fork ahead of its paired baseline at
 **39 of 40** checkpoints across both seeds (19/20 at seed 0, the exception being step 0 before training; 20/20 at
-seed 1), and the gap widens as training proceeds:
+seed 1), and the gap widens as training proceeds. This paired view is the stronger evidence, because the two arms in
+a pair see byte-identical data. `analyze.py` reports a two-sided sign test on it (p = 7.5e-11), but that number is
+**descriptive, not inferential**: consecutive checkpoints of the same run are serially correlated, so they are nowhere
+near the 40 independent trials the test assumes. What it fairly establishes is that the ordering is consistent, not
+that it is significant at that level. The pre-registered rule below is the actual decision.
 
 | step | A_s0 | C_s0 | A_s1 | C_s1 |
 |---|---|---|---|---|
@@ -83,15 +97,26 @@ The controlled interleaved benchmark (`../speed_230m/`, 300 steps, 2 repetitions
 
 **Why it varies.** The baseline's fw+bw is the same in both seeds (0.210 s / 0.212 s), while the compiled arm's is
 0.180 s under seed 0 and 0.124 s under seed 1 — a 45% difference on data with the same images per sample (1.635 vs
-1.638). Both runs hit dynamo's `recompile_limit` (8, left at its default) once, early. The plausible cause is which
+1.638). These four `fw+bw` figures are **CPU launch time, not device time** — `train.py` stopped that timer before any
+device sync, so the GPU tail was charged to `post_process` (see `../speed_230m/README.md` †). They are used here only
+to show that the *baseline* is stable across seeds while the *compiled* arm is not, which holds either way; the
+speedups above come from wall clock. Both runs hit dynamo's `recompile_limit` (8, left at its default) once, early. The plausible cause is which
 image-tile shapes happened to be compiled before the limit was reached: batches whose shape missed the cache fall
 back to eager for the rest of the run. So the honest claim is **1.2–1.7× depending on which shapes get compiled
 first**, not a flat 1.54×. Raising or removing the recompile limit is the obvious follow-up, and was deliberately
 not done here so the default behaviour is what is reported.
 
-Memory (peak reserved) is the steadier win: 48.6 GiB (A) vs 38.4 GiB (C), a 10.2 GiB saving, of which 7.6 GiB comes
-from the gather loss alone. That is what lets the fork train at micro-batch 4, where upstream is already at 78.4 of
-79.2 GiB (`../phase0_230m/summary.md`).
+Memory (peak reserved) is the steadier win, and unlike the speedup it barely moves between seeds:
+
+| seed | A | C | saving |
+|---|---|---|---|
+| 0 | 48.56 GiB | 38.38 GiB | 10.18 GiB |
+| 1 | 46.84 GiB | 36.76 GiB | 10.08 GiB |
+
+The **saving** is what replicates (10.18 vs 10.08 GiB); the absolute peaks differ by ~1.7 GiB between seeds, because
+peak reserved depends on the largest image-tile batch a run happens to see. Of the ~10.1 GiB, 7.6 GiB comes from the
+gather loss alone (`../loss_gather_ab.md`). That is what lets the fork train at micro-batch 4, where upstream is
+already at 78.4 of 79.2 GiB (`../phase0_230m/summary.md`).
 
 ## Caveats
 

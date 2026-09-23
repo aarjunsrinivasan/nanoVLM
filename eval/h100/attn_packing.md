@@ -121,6 +121,18 @@ Real `train.py` loop, one run per arm: SmolLM2-360M-Instruct + siglip2-base-patc
 200 steps, `stats_log_interval=25`. Throughput and memory are **steady state** — the first logging
 interval is dropped per arm (two for the compiled arm) to exclude startup and compilation.
 
+The `fw+bw` column in both tables below is **CPU launch time, not device time.** These runs read
+`train.py`'s per-interval `avg_fw_bw_time`, which at the time was stopped immediately after
+`loss.backward()` returned — before any device sync — so the GPU tail was charged to
+`post_process` (see `speed_230m/README.md` †). This matters most here, because two of these arms
+are compiled and two are not, and `torch.compile` cuts CPU launch cost specifically: the
+`0.351 → 0.203` narrowing therefore **overstates** what compilation does to kernel time. The
+`tokens/s`, memory and `speedup` columns are unaffected — they come from `batch_duration`, which
+encloses `loss.item()` and so a genuine sync — and no conclusion below rests on `fw+bw`. A
+`torch.cuda.synchronize()` now precedes that timer, so future runs measure device time; these are
+left as measured. The attention-core microbenchmark above is unaffected: it times through
+`eval/benchmark_fwd_bwd.py`, which synchronizes around every measured region.
+
 | arm | tokens/s | peak alloc (GiB) | peak reserved (GiB) | fw+bw (s) | speedup vs `none` | last loss |
 |---|---|---|---|---|---|---|
 | `dense_block_diagonal` + `torch.compile` | **19,635** | **42.46** | 45.99 | 0.203 | **1.64×** | 0.8970 |

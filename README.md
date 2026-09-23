@@ -30,21 +30,24 @@ Similar to Andrej Karpathy's nanoGPT, we wanted to equip the community with a ve
 
 ## This fork: what the training-path changes are worth
 
-Measured on 1× H100 against upstream, at ~230M params (SmolLM2-135M-Instruct + siglip2-base-512), two seeds per arm,
-10k steps each. Arms differ only in `--loss_impl`, `--attn_packing_impl` and `--compile`; within a seed both arms
-train on byte-identical batches.
+Measured on 1× H100 at ~230M params (SmolLM2-135M-Instruct + siglip2-base-512), two seeds per arm, 10k steps each.
+Arms differ only in `--loss_impl`, `--attn_packing_impl` and `--compile`; within a seed both arms train on
+byte-identical batches. "upstream" is this code run with upstream's settings, not a checkout of upstream — upstream
+cannot train on torch 2.14 at all ([issue #80](https://github.com/huggingface/nanoVLM/issues/80), still open).
 
-| | upstream | this fork | notes |
+| | upstream recipe | this fork | notes |
 |---|---|---|---|
 | val loss, per-document | 0.9216 | **0.8994** | gap 0.0222 vs a 0.0134 seed spread; fork ahead at 39/40 checkpoints |
 | val loss, upstream's unmasked metric | 0.9201 | 0.9147 | gap 0.0054, **inside** the spread — no claim |
 | throughput | 1.00× | **1.2–1.7×** | varies with which image-tile shapes compile first, see below |
-| peak memory | 48.6 GiB | **38.4 GiB** | 7.6 GiB of it from the loss path alone, enough to double the micro-batch |
+| peak memory saved | — | **−10.1 GiB** | 48.6→38.4 (seed 0), 46.8→36.8 (seed 1); 7.6 GiB of it from the loss path |
 
 The quality gain comes from the packed-row attention fix, not the loss path: `lm_loss_impl='gather'` is
 mathematically identical to upstream's (`tests/test_vision_language_model_loss.py` checks loss and all gradients at
 1e-5), and `--compile` does not change the math either. Both arms are scored by one evaluator under *both* attention
-masks, so neither is judged on its own home turf.
+masks, so neither is judged on its own home turf. With n=2 seeds the unmasked result is reported as a failure rather
+than argued around, and the per-phase `fw+bw` timings in the write-ups are labelled as the CPU-launch-time proxies
+they were.
 
 Write-ups, run logs and the scripts that reproduce them:
 [10k A/B](eval/h100/ab_10k_230m/README.md) · [speed](eval/h100/speed_230m/README.md) ·
@@ -102,9 +105,9 @@ python -m pytest tests/test_vision_language_model_loss.py -v                    
 
 Also useful:
 - `numactl` (`apt-get install -y numactl`), for pinning a run to one NUMA node by hand. Optional; nothing in the repo requires it.
+- `HF_TOKEN`, to avoid Hub rate limits when streaming FineVision.
 
 Benchmarks and their committed results live under [`eval/h100/`](eval/h100/): cross-document attention masking ([`attn_packing.md`](eval/h100/attn_packing.md)) and the training loss path ([`loss_gather_ab.md`](eval/h100/loss_gather_ab.md)). Each write-up names the script that reproduces it.
-- `HF_TOKEN`, to avoid Hub rate limits when streaming FineVision.
 
 ## Training
 

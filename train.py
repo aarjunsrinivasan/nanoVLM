@@ -590,6 +590,16 @@ def train(train_cfg, vlm_cfg):
 
             loss.backward()
 
+            # forward/backward only *launch* kernels; without this sync the timer below measures
+            # CPU launch time and the GPU tail lands in post_process_time instead (torch.compile
+            # cuts launch cost specifically, which biased the fw_bw split between arms -- see the
+            # note in eval/h100/speed_230m/README.md). The step timer was always correct, because
+            # loss.item() below forces a sync inside batch_duration either way; that also makes
+            # this sync nearly free, since the only work it stops overlapping is optimizer.step()'s
+            # kernel launches on update steps.
+            if device.type == 'cuda':
+                torch.cuda.synchronize()
+
             fw_bw_time = time.time() - fw_bw_start
             post_process_start = time.time()
             if is_update_step:

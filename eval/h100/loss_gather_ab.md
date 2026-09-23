@@ -24,9 +24,22 @@ siglip2-base-patch16-512 (460,113,984 params), streamed FineVision, `batch_size=
 accumulation (effective 16), 200 steps per arm, eager. `lm_attn_packing_impl` held at its default
 (`'none'`) across all three arms so this sweep isolates the loss path alone.
 
+**Provenance caveat.** `loss_gather_ab_results.json` records `git_sha: 79f964f` with
+`git_dirty: true`, so these runs came from a working tree that does not correspond exactly to any
+commit (the same tree as `attn_packing.md`: `79f964f` with `train.py`'s committed conflict markers
+resolved, which landed as `97ed280`). The arms differ only in `--loss_impl`, and all three share
+that one tree, so the comparison between them is internally consistent — but it is not
+reproducible from a clean checkout of `79f964f`. Re-running from a tagged commit is the fix;
+`eval/run_loss_ab.py` reproduces the sweep.
+
 ## Results
 
-Steady state, first logging interval dropped per arm.
+Steady state, first logging interval dropped per arm. The `fw+bw` column is **CPU launch time, not
+device time** — these runs read `train.py`'s per-interval `avg_fw_bw_time`, which at the time was
+stopped before any device sync, so the GPU tail was charged to `post_process` (see
+`speed_230m/README.md` †). All three arms here are eager, so no arm is flattered relative to
+another, and the `tokens/s` and speedup columns come from `batch_duration`, which does enclose a
+real sync. The 1.24× and the memory figures stand.
 
 | impl | tokens/s | peak alloc (GiB) | peak reserved (GiB) | fw+bw (s) | speedup vs `full` | last loss |
 |---|---|---|---|---|---|---|

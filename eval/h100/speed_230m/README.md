@@ -10,7 +10,7 @@ than grouped per arm, because two runs of one config in different sessions have 
 - Steady state = steps 100–275, so compile warmup and cache warmup are excluded
 - wandb group `speed-230m`; logs and the driver script are in this directory
 
-| arm | loss / packing / compile | tok/s (compute) | vs A | spread | fw+bw | peak reserved | wall s/step | vs A |
+| arm | loss / packing / compile | tok/s (compute) | vs A | spread | fw+bw † | peak reserved | wall s/step | vs A |
 |---|---|---|---|---|---|---|---|---|
 | A (upstream) | full / none / eager | 14,674 | 1.00× | 2.4% | 0.286 s | 48.5 GiB | 2.68 | 1.00× |
 | B | gather / flex / eager | 15,210 | 1.04× | 0.3% | 0.280 s | 40.9 GiB (−7.6) | 2.59 | 1.04× |
@@ -18,6 +18,15 @@ than grouped per arm, because two runs of one config in different sessions have 
 
 End to end, including compile warmup and the data-cache warmup of the first steps, C finishes the 300 steps 1.36×
 faster than A (594 s vs 808 s). The compile cost is one-off, so over a 10k-step run this converges to the 1.51× above.
+
+† **The `fw+bw` column is CPU launch time, not device time.** When these runs were made, `train.py` stopped the
+fw+bw timer straight after `loss.backward()` returned, which only *queues* kernels; the first real device sync came a
+few lines later at `loss.item()`, so the GPU tail was charged to `post_process` instead. `torch.compile` reduces CPU
+launch cost specifically, so this column **overstates C's per-phase advantage** and the split between arms should not
+be read as a kernel-time breakdown. Everything else in the table is unaffected: `tok/s`, `wall s/step` and the
+**1.54× / 1.51× / 1.36×** headline all derive from `batch_duration`, which encloses `loss.item()` and therefore a
+genuine sync. Fixed for future runs by an explicit `torch.cuda.synchronize()` before the timer; these numbers are left
+as measured rather than silently restated, and re-running was not judged worth the GPU time since no claim rests on them.
 
 **Caveats**
 - `data` wait is 0.001 s everywhere: with 4 workers no arm is data-bound, so these are GPU-side numbers. With the
@@ -27,3 +36,7 @@ faster than A (594 s vs 808 s). The compile cost is one-off, so over a 10k-step 
   whether rarer tile counts later fall back to eager over 10k steps is reported from the Phase 2 runs.
 - Two repetitions per arm. The A and C ranges are far apart (14.5k–14.9k vs 22.1k–23.1k); A and B nearly touch
   (14.5k–14.9k vs 15.2k–15.2k), so the 1.04× eager gain is small but consistent in direction.
+- `speed.sh` as committed loops `for rep in 1 2 3`, i.e. it was written to do three repetitions per arm, but only
+  `r1` and `r2` exist for each arm and every number above is computed over those two. The third repetition did not
+  produce a kept log; the driver is left exactly as it was run rather than edited to match the output. So "spread"
+  here is the range of two observations — a sanity check on direction, not a dispersion estimate.
