@@ -68,16 +68,16 @@ class VisionLanguageModel(nn.Module):
             image_embd = self.MP(image_embd)  # [num_images, mp_image_token_length, D_lm]
             token_embd = self._replace_img_tokens_with_embd(input_ids, token_embd, image_embd)
 
-        logits, _ = self.decoder(token_embd, attention_mask=attention_mask)
+        hidden_states, _ = self.decoder(token_embd, attention_mask=attention_mask)
 
-        loss = None
-        if targets is not None:
-            logits = self.decoder.head(logits) # Apply LM head
-            # Loss is calculated over all tokens, but `targets` (labels) will have -100 for non-answer tokens.
-            # No need to slice logits based on image embedding size here, as the target mask handles it.
-            loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1), ignore_index=-100)
+        if targets is None:
+            return hidden_states, None
 
-        return logits, loss
+        # Image and prompt tokens are -100, so only run the LM head on supervised positions.
+        keep = targets != -100
+        logits = self.decoder.head(hidden_states[keep])
+        loss = F.cross_entropy(logits, targets[keep])
+        return None, loss
 
     @torch.inference_mode()
     def generate(self, input_ids, images, attention_mask=None, max_new_tokens=5, top_k=50, top_p=0.9, temperature=0.5, greedy=False):

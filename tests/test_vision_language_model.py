@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 import unittest
 from models.vision_language_model import VisionLanguageModel
 from models.config import VLMConfig # Assuming VLMConfig is in models.config
@@ -39,6 +40,29 @@ class TestVisionLanguageModel(unittest.TestCase):
         
         self.model = VisionLanguageModel(self.cfg, load_backbone=False) # Don't load pretrained for unit test
         self.model.eval() # Set model to evaluation mode
+
+    def test_loss_matches_full_vocab_cross_entropy(self):
+        torch.manual_seed(0)
+        input_ids = torch.randint(0, self.cfg.lm_vocab_size, (2, 16))
+        targets = torch.full_like(input_ids, -100)
+        # Unequal supervised counts per row, so a per-row mean would not match.
+        targets[0, 3:5] = torch.randint(0, self.cfg.lm_vocab_size, (2,))
+        targets[1, 9:15] = torch.randint(0, self.cfg.lm_vocab_size, (6,))
+
+        _, loss = self.model(input_ids, [], targets=targets)
+        loss.backward()
+        grads = {n: p.grad.clone() for n, p in self.model.named_parameters() if p.grad is not None}
+        self.model.zero_grad()
+
+        # Previous formula: LM head on every position, masked positions dropped by ignore_index.
+        hidden, _ = self.model(input_ids, [])
+        ref = F.cross_entropy(self.model.decoder.head(hidden).flatten(0, 1), targets.flatten(), ignore_index=-100)
+        ref.backward()
+
+        torch.testing.assert_close(loss, ref)
+        for n, p in self.model.named_parameters():
+            if p.grad is not None:
+                torch.testing.assert_close(grads[n], p.grad, msg=n)
 
     def test_generate_kv_caching_consistency(self):
         batch_size = 16
