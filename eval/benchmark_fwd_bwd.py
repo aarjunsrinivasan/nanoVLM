@@ -6,7 +6,7 @@ existing model through its public forward() API.
 
 Run as a module from the repo root (eval/ is a package; a plain `python eval/benchmark_fwd_bwd.py`
 would put eval/ itself on sys.path instead of the repo root and fail to import `models`/`data`).
-Example (pin to a single idle GPU, per this repo's CLAUDE.md GPU rules):
+Example (on an otherwise idle GPU):
     CUDA_VISIBLE_DEVICES=0 uv run python -m eval.benchmark_fwd_bwd --batch_sizes 1 2 4 8
 """
 import argparse

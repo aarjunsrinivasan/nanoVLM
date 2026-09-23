@@ -32,23 +32,20 @@ class VLMConfig:
     lm_tie_weights: bool = True # Decide if you want to tie the LM Head weight to the token embedding weights
     lm_model_type: str = 'HuggingFaceTB/SmolLM2-360M-Instruct' #'HuggingFaceTB/SmolLM2-135M' #
     lm_tokenizer: str = 'HuggingFaceTB/SmolLM2-360M-Instruct'
-    # Training loss path (VisionLanguageModel.forward with targets):
-    #   'full'    - head over every position, then cross_entropy with ignore_index (pre-68921a5)
+    # Training loss path (VisionLanguageModel.forward with targets). All three are numerically
+    # equivalent; they differ in how much of the [B, T, vocab] logits tensor they materialize.
+    #   'full'    - head over every position, then cross_entropy with ignore_index
     #   'gather'  - gather positions with targets != -100, then head + cross_entropy
     #   'chunked' - gather, then fp32 chunked F.linear_cross_entropy (never materializes [N, V])
-    # 'gather' is the default: on an H100 it is 1.24x faster than 'full', cuts peak allocated memory
-    # by 3.57 GiB, and keeps 97% of 'chunked''s memory saving, with losses identical to 'full'.
-    # 'chunked' saves only a further ~0.10 GiB and costs ~21% throughput (likely because its
-    # linear_cross_entropy needs an fp32 input, pushing the vocab projection off bf16 tensor cores),
-    # so it is rarely worth it -- only when that last 0.1 GiB is the binding constraint.
-    # Measured in eval/h100/loss_gather_ab.md (reproduce with eval/run_loss_ab.py).
+    # 'gather' is the default; 'chunked' buys very little further memory for a large throughput
+    # cost. Measured in eval/h100/loss_gather_ab.md (reproduce with eval/run_loss_ab.py).
     lm_loss_impl: str = 'gather'
     # Cross-sample attention masking for packed training rows (ConstantLengthDataset packs several
     # unrelated VQA samples per row to fill lm_max_length; see data/advanced_datasets.py):
     #   'none'                  - no document-boundary awareness: one dense causal+padding mask over
     #                              the whole packed row. Confirmed bug -- later samples attend into
-    #                              earlier, unrelated samples. Kept as the default so existing/resumed
-    #                              configs don't silently change behavior until this is validated.
+    #                              earlier, unrelated samples. Kept as the default only so that
+    #                              existing and resumed configs do not silently change behavior.
     #   'dense_block_diagonal'  - Molmo2 style - doc_id[q]==doc_id[kv] into the same dense
     #                              causal+padding mask, plain SDPA. No compute saved (still O(T^2)),
     #                              zero new deps, zero torch.compile risk.
@@ -61,8 +58,6 @@ class VLMConfig:
     #                              unpacked reference in forward and gradients at full model scale
     #                              (tests/test_vision_language_model_packing.py) and is the fastest
     #                              training configuration measured (eval/h100/attn_packing.md).
-    #                              An earlier train.py refused this combination citing silent
-    #                              cross-document leakage, which no longer reproduces.
     # See eval/benchmark_attn_packing.py for the isolated-core A/B benchmark these were chosen from.
     lm_attn_packing_impl: str = 'none'
     lm_attn_flex_block_size: int = 128  # create_block_mask BLOCK_SIZE, only used by 'flex_document_causal'

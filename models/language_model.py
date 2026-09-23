@@ -301,28 +301,22 @@ class LanguageModelGroupedQueryAttention(nn.Module):
         if self.packing_impl not in ('none', 'dense_block_diagonal', 'flex_document_causal'):
             raise ValueError(f"Unknown lm_attn_packing_impl: {self.packing_impl!r}")
         if self.packing_impl == 'flex_document_causal':
-            # Warn (once per distinct mismatch -- see module-level _flex_block_size_seen comment)
-            # if a later flex_document_causal model in this process uses a different
-            # lm_attn_flex_block_size than whatever value the singletons below were first built
-            # under. Not a hard error: torch.compile(..., dynamic=False) guards/recompiles
-            # create_block_mask on a new BLOCK_SIZE rather than silently reusing stale behavior,
-            # so this is not a known correctness bug -- just untested (no test in this repo varies
-            # lm_attn_flex_block_size across models built in one process).
+            # The compiled singletons are process-wide and not keyed by block size, so a second
+            # model built with a different lm_attn_flex_block_size reuses them. Not a hard error:
+            # torch.compile(..., dynamic=False) guards and recompiles create_block_mask on a new
+            # BLOCK_SIZE rather than silently reusing stale behavior.
+            # TODO: key the singletons on block_size (functools.lru_cache) and drop this warning.
+            # Untested either way -- no test here varies the block size within one process.
             global _flex_block_size_seen
             if _flex_block_size_seen is None:
                 _flex_block_size_seen = self.flex_block_size
             elif _flex_block_size_seen != self.flex_block_size:
                 warnings.warn(
-                    "models/language_model.py:30-54: the process-wide compiled flex_attention/"
-                    "create_block_mask singletons (_compiled_flex_attention/_compiled_create_block_mask) "
-                    f"were first built with lm_attn_flex_block_size={_flex_block_size_seen}, but this "
-                    "LanguageModelGroupedQueryAttention (lm_attn_packing_impl='flex_document_causal') is "
-                    f"being constructed with lm_attn_flex_block_size={self.flex_block_size} in the same "
-                    "process. These singletons are not keyed by block size, so torch.compile(dynamic=False) "
-                    "will guard/recompile create_block_mask for the new BLOCK_SIZE rather than reuse stale "
-                    "behavior -- not known to be incorrect, but untested and adds recompile overhead plus "
-                    "unbounded Dynamo guard-cache growth. If you need multiple lm_attn_flex_block_size "
-                    "values, run each in a separate process.",
+                    "The process-wide compiled flex_attention/create_block_mask singletons were first "
+                    f"built with lm_attn_flex_block_size={_flex_block_size_seen}, but this model is "
+                    f"being constructed with {self.flex_block_size}. They are not keyed by block size, "
+                    "so this costs a recompile and unbounded Dynamo guard-cache growth. Run each block "
+                    "size in a separate process.",
                     stacklevel=2,
                 )
             # Force the compiled singletons to build now, at model-construction time (before the
@@ -407,9 +401,8 @@ class LanguageModelGroupedQueryAttention(nn.Module):
             # sub-samples must never attend to each other regardless of causal ordering.
             if self.packing_impl == 'dense_block_diagonal':
                 # Molmo2-style fix (ported from eval/benchmark_attn_packing.py's
-                # dense_block_diagonal_sdpa_core; validated against a real Ai2 Molmo2 checkout,
-                # olmo/models/molmo2/molmo2.py:682-698): AND
-                # doc_id[q]==doc_id[kv] into the same dense causal+padding mask the 'none' path
+                # dense_block_diagonal_sdpa_core, and checked against Ai2's Molmo2 implementation):
+                # AND doc_id[q]==doc_id[kv] into the same dense causal+padding mask the 'none' path
                 # below builds. No compute saved (still O(T_curr*T_kv)), but the mask itself costs
                 # almost nothing extra to build fresh every step.
                 causal_mask_val = torch.tril(torch.ones(T_curr, T_kv, device=x.device, dtype=torch.bool)).view(1, 1, T_curr, T_kv)

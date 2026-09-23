@@ -1,38 +1,19 @@
 """A/B benchmarks VLMConfig.lm_loss_impl in a real training loop.
 
-Sweeps the three loss implementations in models/vision_language_model.py's forward() --
+One real train.py run per loss impl, comparing tokens/sec and peak memory. Results are saved as
+JSON under eval/<gpu>/; see eval/h100/loss_gather_ab.md for the measured numbers.
 
     'full'    materialize logits [B, T, V] over every position, then F.cross_entropy
     'gather'  keep only non-masked positions (targets != -100) before the LM head (default)
     'chunked' gather, then F.linear_cross_entropy, which never materializes logits at all
 
--- one real train.py run per arm (same model, same streamed FineVision data, same step count),
-sequentially on one GPU, and compares tokens/sec and peak memory.
-
-This replaces the `experiments/loss_optimization/scripts/run_train_e2e.sh` driver referenced by
-README.md, which was never committed and has been lost. It lives in the repo so the numbers under
-eval/<gpu>/ can be reproduced rather than taken on trust.
-
-What this does NOT measure: numerical equivalence of the three implementations. That is already
-covered by tests/test_vision_language_model_loss.py, which checks each variant's loss *and every
-parameter gradient* against an independent reference formula (1e-5 in fp32, plus a bf16-autocast
-case). The `last_batch_loss` column here is only a sanity signal that the arms trained on the same
-data, not a precision claim -- the arms are not step-for-step bitwise comparable because each
-train() call re-initializes the model from backbone weights.
-
-Run as a module from the repo root, pinned to a single idle GPU (check `nvidia-smi` first):
-
     CUDA_VISIBLE_DEVICES=0 python -m eval.run_loss_ab
 
-A full run trains --max_training_steps per arm (minutes, not seconds) and downloads/caches real
-dataset shards. Do a short dry run first:
+This measures cost, not correctness: numerical equivalence of the three impls is covered by
+tests/test_vision_language_model_loss.py. The last_batch_loss column is only a signal that the
+arms saw the same data.
 
-    CUDA_VISIBLE_DEVICES=0 python -m eval.run_loss_ab \
-        --max_training_steps 20 --stats_log_interval 5 --warmup_intervals 0
-
-The same --num_workers >= 1 fairness caveat as eval/benchmark_attn_train.py applies: get_dataloaders()
-creates a fresh torch.Generator().manual_seed(0) per call, so each arm sees an identical sample
-order only when DataLoader workers (not the parent process's carried-over RNG) do the shuffling.
+Keep --num_workers >= 1, for the reason in eval/benchmark_attn_train.py.
 """
 import argparse
 import dataclasses

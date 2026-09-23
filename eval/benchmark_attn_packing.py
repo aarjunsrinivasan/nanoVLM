@@ -1,42 +1,22 @@
-"""Benchmarks attention implementations for training-time sequence packing.
+"""Microbenchmarks attention implementations for training-time sequence packing.
 
-`data/advanced_datasets.py`'s `ConstantLengthDataset` packs several unrelated VQA samples into one
-row to fill `lm_max_length` (used for both train and val, `train.py:247-251`). But
-`models/language_model.py`'s `LanguageModelGroupedQueryAttention.forward` (lines 207-308) only ever
-applies one full causal mask over the whole packed row, with no document-boundary awareness -- a
-later sample's tokens causally attend into an earlier, unrelated sample's tokens during training.
+`ConstantLengthDataset` packs several unrelated samples into one row, but upstream's attention
+applies a single causal mask over the whole row, so a later sample attends into earlier, unrelated
+ones. This times the alternatives on synthetic batches shaped like the real packed output, calling
+`LanguageModelGroupedQueryAttention`'s own submodules so every variant pays identical
+projection/RoPE cost and the delta is isolated to the attention core. It also runs
+`verify_no_cross_contamination` first, so the timings are only trusted once the leak is
+demonstrated. For the same question end to end, see eval/benchmark_attn_train.py.
 
-This script compares, on synthetic batches shaped like this repo's real packed output:
-  - `current_packed_dense_sdpa`: today's actual production attention core (verbatim copy of
-    language_model.py:262-287) -- fast, but exhibits the cross-sample leak above.
-  - `flex_document_causal_{precomputed_mask,mask_rebuilt_per_iter}`: torch.nn.attention.flex_attention
-    with a document-causal BlockMask (`doc_id[q] == doc_id[kv]` ANDed with causal) -- correct, no
-    cross-sample leakage, and (unlike a dense block-diagonal SDPA mask) block-sparse so the kernel
-    skips cross-document blocks instead of computing-then-masking them.
-  - `unpacked_padded_sdpa`: no packing at all (today's safe alternative, one sample per row,
-    individually padded) -- reference baseline for what packing of either kind actually buys.
-  - `sdpa_gqa_dense_causal` (optional, off by default): `current_packed_dense_sdpa` but with SDPA's
-    native `enable_gqa=True` instead of `repeat_interleave` -- isolates "native GQA" speedup from
-    flex's "document-mask sparsity" speedup.
+Variant names, which are also the keys in the saved JSON:
+  - `current_packed_dense_sdpa` -- production core today: dense causal mask, leaks across samples.
+  - `flex_document_causal_{precomputed_mask,mask_rebuilt_per_iter}` -- flex_attention with a
+    document-causal BlockMask; correct, and block-sparse so cross-document blocks are skipped.
+  - `unpacked_padded_sdpa` -- no packing, one sample per row; baseline for what packing buys.
+  - `sdpa_gqa_dense_causal` (off by default) -- as the first, but SDPA's native `enable_gqa`
+    instead of `repeat_interleave`, to separate native-GQA speedup from mask sparsity.
 
-Does not modify any models/*.py or data/*.py code -- only exercises LanguageModelGroupedQueryAttention's
-real submodules (q_proj/k_proj/v_proj/out_proj, RotaryEmbedding, apply_rotary_pos_embd) directly, so
-all variants pay identical, non-reimplemented projection/RoPE/out-proj cost and the benchmarked delta
-is isolated to the attention core.
-
-By default also runs a cheap correctness self-check (`verify_no_cross_contamination`) proving the
-dense variant leaks across a document boundary and the flex variant doesn't, before trusting any
-timing numbers.
-
-Run as a module from the repo root (eval/ is a package), pinned to a single idle GPU per this
-repo's CLAUDE.md GPU rules (check `nvidia-smi` first):
     CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_packing --batch_sizes 2 --num_iters 5 --num_warmup 2
-
-A larger sweep (more batch sizes / block sizes) is a separate, heavier job -- run it detached
-(`nohup`/`tmux`) rather than in an interactive shell you might lose.
-
-If timing looks off for the flex variants, `TORCH_LOGS=recompiles python -m eval.benchmark_attn_packing ...`
-will show whether a shape/guard change is forcing an unexpected recompile mid-sweep.
 """
 import argparse
 import json
@@ -65,13 +45,11 @@ if torch.cuda.is_available():
 def _sample_lengths(rng, seq_length, avg_len, std, min_len, max_len):
     """Draws sub-sample lengths until they sum to exactly seq_length, mirroring
     ConstantLengthDataset._pack_one_group's invariant that a packed row never exceeds seq_length
-    (data/advanced_datasets.py:261-262) -- the final draw is truncated to fit.
+    -- the final draw is truncated to fit.
 
     The remaining-budget cap must be applied LAST, after the min_len floor, not before: if
     max(min_len, min(..., remaining)) were used instead, a remaining budget smaller than min_len
-    would get floored back up past it, overshooting seq_length on the final segment (surfaced by
-    a real crash during testing -- torch.arange(length) not matching the space actually left in
-    the row)."""
+    would get floored back up past it, overshooting seq_length on the final segment."""
     lengths, total = [], 0
     while total < seq_length:
         remaining = seq_length - total
@@ -88,9 +66,9 @@ def build_packed_batch(batch_size, seq_length, hidden_dim, avg_sample_length, sa
     random hidden states (benchmarking attention compute, not model quality) plus the bookkeeping
     tensors each attention variant needs.
 
-    hidden_states is always float32 -- like the real token_embedding table's output
-    (models/vision_language_model.py:64), it's the model's stored (unmodified) dtype; the bf16/fp16
-    autocast happens per-op inside the timed region, matching eval/benchmark_fwd_bwd.py's pattern.
+    hidden_states is always float32 -- like the real token_embedding table's output in
+    VisionLanguageModel.forward, it's the model's stored (unmodified) dtype; the bf16/fp16 autocast
+    happens per-op inside the timed region, matching eval/benchmark_fwd_bwd.py's pattern.
 
     Returns:
         hidden_states: [B, T, D] float32
@@ -158,8 +136,8 @@ def build_shared_attn_module(cfg, device):
 
 
 def project_qkv(attn, x, cos, sin):
-    """Replays language_model.py:231-236 verbatim via the real submodules, so q/k/v can't
-    silently drift from production."""
+    """Replays LanguageModelGroupedQueryAttention.forward's projection + RoPE step verbatim via the
+    real submodules, so q/k/v can't silently drift from production."""
     B, T, _ = x.shape
     q = attn.q_proj(x).view(B, T, attn.n_heads, attn.head_dim).transpose(1, 2)
     k = attn.k_proj(x).view(B, T, attn.n_kv_heads, attn.head_dim).transpose(1, 2)
@@ -182,10 +160,10 @@ def run_attention_core(attn, core_fn, x, cos, sin):
 # --------------------------------------------------------------------------------------------- #
 
 def dense_sdpa_core(q, k, v, n_kv_groups, pad_mask, dropout_p):
-    """Verbatim copy of language_model.py:262-287's SDPA branch (today's actual production
-    attention core) -- k/v repeat_interleave'd to n_heads, one dense causal+padding additive mask
-    over the whole packed row, with no document-boundary awareness. This IS the bug being
-    benchmarked; if language_model.py's SDPA branch changes, re-sync this copy by line number."""
+    """Verbatim copy of LanguageModelGroupedQueryAttention.forward's SDPA branch (today's actual
+    production attention core) -- k/v repeat_interleave'd to n_heads, one dense causal+padding
+    additive mask over the whole packed row, with no document-boundary awareness. This IS the bug
+    being benchmarked; if that SDPA branch changes, re-sync this copy."""
     k_exp = k.repeat_interleave(n_kv_groups, dim=1)
     v_exp = v.repeat_interleave(n_kv_groups, dim=1)
     T, T_kv = q.size(2), k_exp.size(2)
@@ -206,8 +184,8 @@ def dense_block_diagonal_sdpa_core(q, k, v, n_kv_groups, doc_id, pad_mask, dropo
     dense_sdpa_core already builds, fed to plain SDPA. No block-sparse kernel, so this pays the
     same full O(T^2) attention compute as today's buggy path (no compute saved), but unlike
     flex_document_causal's create_block_mask, building the mask itself costs almost nothing extra
-    -- Molmo2 rebuilds it fresh every step this way (olmo/data/dynamic_packer.py:220-222 repacks
-    every batch, same as this repo's ConstantLengthDataset)."""
+    -- Molmo2 rebuilds it fresh every step this way, repacking every batch, same as this repo's
+    ConstantLengthDataset."""
     k_exp = k.repeat_interleave(n_kv_groups, dim=1)
     v_exp = v.repeat_interleave(n_kv_groups, dim=1)
     T, T_kv = q.size(2), k_exp.size(2)

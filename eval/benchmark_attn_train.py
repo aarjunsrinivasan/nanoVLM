@@ -1,41 +1,16 @@
 """Benchmarks VLMConfig.lm_attn_packing_impl in a real training loop.
 
-Unlike eval/benchmark_attn_packing.py (a synthetic microbenchmark of the isolated attention-core
-math on random tensors), this script runs the actual train.py training loop -- real model
-(SmolLM2-360M-Instruct + siglip2-base-patch16-512 by default), real streamed FineVision dataset --
-once per lm_attn_packing_impl value ('none', 'dense_block_diagonal', 'flex_document_causal', all
-eager by default) plus optional compiled arms (--compile_variants, e.g. 'dense_block_diagonal'
-with torch.compile; any packing impl can be compiled),
-sequentially on one GPU, and compares real tokens/sec, peak memory, and loss.
+Runs the actual train.py loop once per packing impl ('none', 'dense_block_diagonal',
+'flex_document_causal'), plus any arms named by --compile_variants, and compares tokens/sec, peak
+memory and loss. Results print as a table and are saved as JSON under eval/<gpu>/. For the
+isolated attention-core math on synthetic tensors instead, see eval/benchmark_attn_packing.py.
 
-Results are local-only regardless of wandb: printed as a table and saved as JSON under
-eval/<gpu>/, grouped by the hardware they were measured on.
-
-Run as a module from the repo root, pinned to a single idle GPU per this repo's CLAUDE.md GPU
-rules (check `nvidia-smi` first):
     CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_train
 
-A full run downloads/caches real dataset shards and trains for --max_training_steps per arm
-(minutes, not seconds); run it detached (`nohup`/`tmux`) rather than in an interactive shell you
-might lose. Do a short dry run first, e.g.:
-    CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_train \
-        --max_training_steps 20 --stats_log_interval 5 --compile_warmup_intervals 1 \
-        --variants none dense_block_diagonal --compile_variants dense_block_diagonal
-
-To add only the compiled arm to a run that already has saved eager results (skip re-running the
-eager arms, and don't clobber their results file):
-    CUDA_VISIBLE_DEVICES=0 python -m eval.benchmark_attn_train --variants \
-        --compile_variants dense_block_diagonal \
-        --results_file eval/h100/benchmark_attn_train_compile_results.json
-
-Caveat: train.py and data/advanced_datasets.py seed Python's global random/torch RNGs once at
-import time, not per train() call. With --num_workers 0, the packing dataset's shuffle state
-would carry over between these sequential in-process variant runs, so the variants would not see
-an identical shard/sample order. With the default --num_workers 2 (>=1) this isn't a concern:
-get_dataloaders() creates a fresh torch.Generator().manual_seed(0) per call, and PyTorch's
-DataLoader worker init derives each worker's random/torch seed deterministically from that
-generator, reseeding `random` inside each worker process independently of the parent process's
-prior state. Keep --num_workers >= 1 for a fair cross-variant comparison.
+Keep --num_workers >= 1. The global random/torch RNGs are seeded once at import, not per train()
+call, so with 0 workers the packing dataset's shuffle state carries over between arms and they
+stop seeing identical data -- silently, with no error. With workers, get_dataloaders() gives each
+arm a fresh seeded generator and each worker reseeds from it.
 """
 import argparse
 import dataclasses
