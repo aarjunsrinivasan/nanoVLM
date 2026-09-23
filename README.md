@@ -70,7 +70,7 @@ You can either clone the repository, setup an environment and start with the scr
 The environment is pinned in `uv.lock` and installed with `uv`. Tested on 1× H100 80GB (driver 570, with the compat libraries below).
 
 ```bash
-git clone -b dev https://github.com/aarjunsrinivasan/nanoVLM.git
+git clone https://github.com/aarjunsrinivasan/nanoVLM.git
 cd nanoVLM
 uv sync --frozen            # creates .venv from uv.lock (includes pytest from the dev group)
 source .venv/bin/activate
