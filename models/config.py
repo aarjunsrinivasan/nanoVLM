@@ -44,8 +44,8 @@ class VLMConfig:
     # unrelated VQA samples per row to fill lm_max_length; see data/advanced_datasets.py):
     #   'none'                  - no document-boundary awareness: one dense causal+padding mask over
     #                              the whole packed row. Confirmed bug -- later samples attend into
-    #                              earlier, unrelated samples. Kept as the default only so that
-    #                              existing and resumed configs do not silently change behavior.
+    #                              earlier, unrelated samples. Upstream's behavior, kept selectable
+    #                              so the bug can be reproduced and benchmarked against.
     #   'dense_block_diagonal'  - Molmo2 style - doc_id[q]==doc_id[kv] into the same dense
     #                              causal+padding mask, plain SDPA. No compute saved (still O(T^2)),
     #                              zero new deps, zero torch.compile risk.
@@ -59,7 +59,15 @@ class VLMConfig:
     #                              (tests/test_vision_language_model_packing.py) and is the fastest
     #                              training configuration measured (eval/h100/attn_packing.md).
     # See eval/benchmark_attn_packing.py for the isolated-core A/B benchmark these were chosen from.
-    lm_attn_packing_impl: str = 'none'
+    # Default is 'dense_block_diagonal': correct, and the only correct option with no torch.compile
+    # or FlexAttention dependency, so it runs everywhere (flex needs an inductor backend, which some
+    # platforms lack for CPU). It costs 0.4% end-to-end against the buggy 'none' at identical peak
+    # memory -- inside run-to-run noise (eval/h100/attn_packing.md). Use 'flex_document_causal' with
+    # TrainConfig.compile=True for the fastest measured configuration.
+    # Checkpoints record this field in config.json and from_pretrained restores it, so changing this
+    # default does not alter any checkpoint this fork saved; only configs written before the field
+    # existed inherit it.
+    lm_attn_packing_impl: str = 'dense_block_diagonal'
     lm_attn_flex_block_size: int = 128  # create_block_mask BLOCK_SIZE, only used by 'flex_document_causal'
     lm_chat_template: str ="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 
