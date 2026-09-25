@@ -115,7 +115,9 @@ Memory (peak reserved) is the steadier win, and unlike the speedup it barely mov
 
 The **saving** is what replicates (10.18 vs 10.08 GiB); the absolute peaks differ by ~1.7 GiB between seeds, because
 peak reserved depends on the largest image-tile batch a run happens to see. Of the ~10.1 GiB, 7.6 GiB comes from the
-gather loss alone (`../loss_gather_ab.md`). That is what lets the fork train at micro-batch 4, where upstream is
+gather loss alone (`../speed_230m/README.md`, arm A→B at this model size; the 460M sweep in
+`../loss_gather_ab.md` measures the same change at 3.57 GiB allocated / 5.08 reserved). That is what lets the fork
+train at micro-batch 4, where upstream is
 already at 78.4 of 79.2 GiB (`../phase0_230m/summary.md`).
 
 ## Caveats

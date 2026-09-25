@@ -197,7 +197,7 @@ The committed test that replaced the refusal is
 `test_flex_document_causal_under_torch_compile_matches_unpacked_reference` in
 `tests/test_vision_language_model_packing.py`: a smaller model, but the same geometry — 1,768-token
 rows with mid-block boundaries, two rows with different layouts, forward and every gradient — so a
-regression in newer torch fails CI rather than silently training on leaked attention. Pointed at
+regression in newer torch fails that test rather than silently training on leaked attention. Pointed at
 `'none'`, the same check fails at the first cross-boundary document. The evidence covers torch
 `2.14.0+cu130`; the refusal may have been right on the version it was written against.
 
@@ -220,6 +220,12 @@ epoch column does not.
 
 ## Caveats
 
+- **One run per arm, and run-to-run noise is not characterized here.** Two runs of one config in this
+  repo have differed by 24% across sessions (`speed_230m/README.md`), so treat end-to-end differences
+  under ~2% as indistinguishable — the 0.4% gap between `dense_block_diagonal` eager and the leaky
+  baseline is well inside that, which is the point being made about it, but the 1.64× and 1.28× rest
+  on single runs and would be better with repetitions. The interleaved, repeated measurements are in
+  `speed_230m/`.
 - **The main end-to-end table's compiled arm is `dense_block_diagonal` only** because, when it was
   run, `train.py` still refused `flex_document_causal` + `torch.compile`. The flex compiled arm was
   measured separately with identical settings — see "`flex_document_causal` + `torch.compile`"

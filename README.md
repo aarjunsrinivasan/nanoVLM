@@ -25,31 +25,45 @@ cannot train on torch 2.14 at all ([issue #80](https://github.com/huggingface/na
 
 | | upstream recipe | this fork | notes |
 |---|---|---|---|
-| val loss, per-document | 0.9216 | **0.8994** | lower is better; gap 0.0222 vs a 0.0134 seed spread |
-| val loss, upstream's unmasked metric | 0.9201 | 0.9147 | gap 0.0054, **inside** the spread — no claim |
+| peak memory saved | — | **−10.1 GiB** | 48.6→38.4 (seed 0), 46.8→36.8 (seed 1); the saving replicates to 0.1 GiB |
 | throughput | 1.00× | **1.2–1.7×** | varies with which image-tile shapes compile first, see below |
-| peak memory saved | — | **−10.1 GiB** | 48.6→38.4 (seed 0), 46.8→36.8 (seed 1); 7.6 GiB of it from the loss path |
+| val loss, per-document | 0.9216 | **0.8994** | gap 0.0222 vs a 0.0134 seed spread — passes the pre-registered rule |
+| val loss, upstream's unmasked metric | 0.9201 | 0.9147 | gap 0.0054, **inside** the spread — pre-registered check, did not pass |
+| downstream, 7 lmms-eval tasks | — | **TextVQA +4.5** | one credible task; six inconclusive at their MDE, one trending against |
 
-**The paired view, which is the stronger evidence.** Two seeds is too few to lean on a difference of
-averages, so the comparison that carries weight is the paired one. Within a seed the two arms train on
-byte-identical batches, which makes them comparable step for step; every 500 steps both are scored by
-the same evaluator on the same 256 validation rows. The fork has the lower per-document loss at **39 of
-those 40 points** (20 evals × 2 seeds), the single exception being step 0, before any training has
-happened. A sign test on that gives p = 7.5e-11, but consecutive checkpoints of one run are strongly
-correlated, so treat it as a statement about how consistent the ordering is, not as significance at
-that level. Full tables in the [10k A/B write-up](eval/h100/ab_10k_230m/README.md).
+**The rule was fixed before the runs.** An improvement counts only if the gap between arms exceeds the
+spread between seeds within an arm — stated in advance and encoded in `analyze.py`. Two arms were
+scored under *both* attention masks by the same evaluator, so neither is judged on its own home turf.
+The per-document metric passes that rule. **Upstream's own unmasked metric does not, and that was the
+other pre-registered check.** It is reported as failing.
+
+**The paired view, as supporting evidence.** Within a seed the two arms train on byte-identical
+batches, so they are comparable step for step; every 500 steps both are scored on the same 256
+validation rows. The fork has the lower per-document loss at **39 of those 40 points** (20 evals ×
+2 seeds), the exception being step 0, before any training. A sign test gives p = 7.5e-11, but
+consecutive checkpoints of one run are strongly correlated, so that number is descriptive of how
+consistent the ordering is, **not inferential** — the pre-registered rule above is the actual decision.
+Full tables in the [10k A/B write-up](eval/h100/ab_10k_230m/README.md).
+
+**Downstream, and the noise floor.** The four final checkpoints were scored on seven lmms-eval tasks
+with cluster-bootstrap CIs and a decision rule that requires an effect to exceed what changing the
+training seed alone does. **TextVQA is credible at +4.5 points**; six tasks are inconclusive at their
+minimum detectable effect and AI2D trends against. ChartQA moves −2.8 under one seed and +4.8 under the
+other, both with small p-values — a clean demonstration of why single-seed benchmark deltas at this
+scale cannot be trusted. Cross-document attention mass is also measured directly, per layer.
+See [downstream benchmarks and mechanism](eval/h100/downstream/README.md).
 
 **Which change caused what.** The quality gain can only come from the packed-row attention fix:
 `lm_loss_impl='gather'` is mathematically identical to upstream's (`tests/test_vision_language_model_loss.py` checks
 the loss and every gradient at 1e-5) and `--compile` does not change the math either, so those two are the speed and
-memory half. Under upstream's own unmasked metric the arms are indistinguishable
-— that was a pre-registered check and it did not pass.
+memory half. Of the ~10.1 GiB saved, 7.6 GiB comes from the loss path alone
+([speed](eval/h100/speed_230m/README.md), arm A→B).
 
 
 Write-ups, run logs and the scripts that reproduce them:
-[10k A/B](eval/h100/ab_10k_230m/README.md) · [speed](eval/h100/speed_230m/README.md) ·
-[sizing](eval/h100/phase0_230m/summary.md) · [attention masking](eval/h100/attn_packing.md) ·
-[loss path](eval/h100/loss_gather_ab.md)
+[10k A/B](eval/h100/ab_10k_230m/README.md) · [downstream + mechanism](eval/h100/downstream/README.md) ·
+[speed](eval/h100/speed_230m/README.md) · [sizing](eval/h100/phase0_230m/summary.md) ·
+[attention masking](eval/h100/attn_packing.md) · [loss path](eval/h100/loss_gather_ab.md)
 
 ## Upstream nanoVLM
 
