@@ -1,0 +1,756 @@
+{
+  "results": {
+    "ai2d": {
+      "alias": "ai2d",
+      "exact_match,flexible-extract": 0.23801813471502592,
+      "exact_match_stderr,flexible-extract": 0.007664944714338124,
+      "exact_match_stderr_clt,flexible-extract": 0.007664944714338126,
+      "exact_match_stderr_clustered,flexible-extract": "N/A"
+    },
+    "chartqa": {
+      "alias": "chartqa",
+      "relaxed_overall,none": 0.2816,
+      "relaxed_overall_stderr,none": 0.008997386130586656,
+      "relaxed_overall_stderr_clt,none": 0.008997386130586656,
+      "relaxed_overall_stderr_clustered,none": "N/A",
+      "relaxed_human_split,none": 0.2072,
+      "relaxed_human_split_stderr,none": 0.011468205779241842,
+      "relaxed_human_split_stderr_clt,none": 0.011468205779241843,
+      "relaxed_human_split_stderr_clustered,none": "N/A",
+      "relaxed_augmented_split,none": 0.356,
+      "relaxed_augmented_split_stderr,none": 0.013548359547825326,
+      "relaxed_augmented_split_stderr_clt,none": 0.013548359547825326,
+      "relaxed_augmented_split_stderr_clustered,none": "N/A"
+    },
+    "docvqa_val": {
+      "alias": "docvqa_val",
+      "anls,none": 0.21568238449937624,
+      "anls_stderr,none": 0.005024870473593349,
+      "anls_stderr_clt,none": 0.005024870473593349,
+      "anls_stderr_clustered,none": "N/A"
+    },
+    "infovqa_val": {
+      "alias": "infovqa_val",
+      "anls,none": 0.13501730796112002,
+      "anls_stderr,none": 0.0054999800895030645,
+      "anls_stderr_clt,none": 0.0054999800895030645,
+      "anls_stderr_clustered,none": "N/A"
+    },
+    "ocrbench": {
+      "alias": "ocrbench",
+      "ocrbench_accuracy,none": 0.204,
+      "ocrbench_accuracy_stderr,none": "N/A",
+      "ocrbench_accuracy_stderr_clt,none": 0.012749374359024311,
+      "ocrbench_accuracy_stderr_clustered,none": "N/A"
+    },
+    "scienceqa": {
+      "alias": "scienceqa",
+      "exact_match,none": 0.38622966281537374,
+      "exact_match_stderr,none": 0.007477266022040568,
+      "exact_match_stderr_clt,none": 0.007477266022040568,
+      "exact_match_stderr_clustered,none": "N/A"
+    },
+    "textvqa_val": {
+      "alias": "textvqa_val",
+      "exact_match,none": 0.2161,
+      "exact_match_stderr,none": 0.00566947851193736,
+      "exact_match_stderr_clt,none": 0.00566947851193736,
+      "exact_match_stderr_clustered,none": "N/A",
+      "submission,none": null,
+      "submission_stderr,none": "N/A",
+      "submission_stderr_clt,none": "N/A",
+      "submission_stderr_clustered,none": "N/A"
+    }
+  },
+  "group_subtasks": {
+    "ai2d": [],
+    "chartqa": [],
+    "docvqa_val": [],
+    "infovqa_val": [],
+    "ocrbench": [],
+    "scienceqa": [],
+    "textvqa_val": []
+  },
+  "configs": {
+    "ai2d": {
+      "task": "ai2d",
+      "tag": [
+        "public_eval_qwen3_5_family"
+      ],
+      "dataset_path": "lmms-lab-encoder/ai2d",
+      "dataset_kwargs": {
+        "token": true
+      },
+      "test_split": "test",
+      "full_docs": false,
+      "process_results_use_image": false,
+      "doc_to_visual": "<function ai2d_doc_to_visual at 0x7cfc23541120>",
+      "doc_to_text": "<function ai2d_doc_to_text at 0x7cfc23541580>",
+      "doc_to_target": "<function ai2d_doc_to_target at 0x7cfc23541bc0>",
+      "description": "",
+      "target_delimiter": " ",
+      "fewshot_delimiter": "\n\n",
+      "num_fewshot": 0,
+      "metric_list": [
+        {
+          "metric": "exact_match",
+          "aggregation": "mean",
+          "higher_is_better": true,
+          "ignore_case": true,
+          "ignore_punctuation": true
+        }
+      ],
+      "output_type": "generate_until",
+      "generation_kwargs": {
+        "max_new_tokens": 16,
+        "temperature": 0.0,
+        "do_sample": false,
+        "until": [
+          "\n\n"
+        ]
+      },
+      "repeats": 1,
+      "filter_list": [
+        {
+          "name": "flexible-extract",
+          "filter": [
+            {
+              "function": "<class 'utils.MultiChoiceRegexFilter'>",
+              "group_select": 0,
+              "ignore_case": true,
+              "ignore_punctuation": true,
+              "regex_pattern": "([A-Z])\\."
+            }
+          ]
+        }
+      ],
+      "should_decontaminate": false,
+      "score_key": "score",
+      "metadata": [
+        {
+          "version": 0.0
+        }
+      ],
+      "lmms_eval_specific_kwargs": {
+        "default": {
+          "prompt_format": "mcq",
+          "pre_prompt": "",
+          "post_prompt": "\nAnswer with the option's letter from the given choices directly."
+        },
+        "gpt4v": {
+          "prompt_format": "mcq",
+          "pre_prompt": "",
+          "post_prompt": "\nAbove choices are given in {option}. {content} format.\nPlease answer with the option letter from the given choices directly."
+        },
+        "qwen_vl": {
+          "prompt_format": "qa",
+          "pre_prompt": "",
+          "post_prompt": " Answer:"
+        },
+        "xcomposer2_4khd": {
+          "prompt_format": "mcq_xcomposer",
+          "pre_prompt": "[UNUSED_TOKEN_146]user\nQuestion: ",
+          "post_prompt": "[UNUSED_TOKEN_145]\n[UNUSED_TOKEN_146]assistant\nThe answer is"
+        },
+        "prompt_format": "mcq",
+        "pre_prompt": "",
+        "post_prompt": "\nAnswer with the option's letter from the given choices directly."
+      },
+      "model_specific_target_kwargs": {
+        "default": "mcq",
+        "qwen_vl": "qa"
+      },
+      "auto_strip_thinking": false
+    },
+    "chartqa": {
+      "task": "chartqa",
+      "dataset_path": "lmms-lab-encoder/ChartQA",
+      "dataset_kwargs": {
+        "token": true
+      },
+      "test_split": "test",
+      "full_docs": false,
+      "process_results_use_image": false,
+      "doc_to_visual": "<function chartqa_doc_to_visual at 0x7cfc236293a0>",
+      "doc_to_text": "<function chartqa_doc_to_text at 0x7cfc23628fe0>",
+      "doc_to_target": "answer",
+      "process_results": "<function chartqa_process_results at 0x7cfc23628d60>",
+      "description": "",
+      "target_delimiter": " ",
+      "fewshot_delimiter": "\n\n",
+      "num_fewshot": 0,
+      "metric_list": [
+        {
+          "metric": "relaxed_overall",
+          "aggregation": "mean",
+          "higher_is_better": true
+        },
+        {
+          "metric": "relaxed_human_split",
+          "aggregation": "mean",
+          "higher_is_better": true
+        },
+        {
+          "metric": "relaxed_augmented_split",
+          "aggregation": "mean",
+          "higher_is_better": true
+        }
+      ],
+      "output_type": "generate_until",
+      "generation_kwargs": {
+        "max_new_tokens": 16,
+        "temperature": 0.0,
+        "do_sample": false,
+        "until": [
+          "\n\n"
+        ]
+      },
+      "repeats": 1,
+      "should_decontaminate": false,
+      "score_key": "score",
+      "metadata": [
+        {
+          "version": 0.0
+        }
+      ],
+      "lmms_eval_specific_kwargs": {
+        "default": {
+          "pre_prompt": "",
+          "post_prompt": "\nAnswer the question with a single word."
+        },
+        "qwen_vl": {
+          "pre_prompt": "",
+          "post_prompt": " Answer:"
+        },
+        "pre_prompt": "",
+        "post_prompt": "\nAnswer the question with a single word."
+      },
+      "auto_strip_thinking": false
+    },
+    "docvqa_val": {
+      "task": "docvqa_val",
+      "dataset_path": "lmms-lab-encoder/DocVQA",
+      "dataset_name": "DocVQA",
+      "dataset_kwargs": {
+        "token": true
+      },
+      "test_split": "validation",
+      "full_docs": false,
+      "process_results_use_image": false,
+      "doc_to_visual": "<function docvqa_doc_to_visual at 0x7cfe46136520>",
+      "doc_to_text": "<function docvqa_doc_to_text at 0x7cfe46136c00>",
+      "doc_to_target": "answers",
+      "description": "",
+      "target_delimiter": " ",
+      "fewshot_delimiter": "\n\n",
+      "num_fewshot": 0,
+      "metric_list": [
+        {
+          "metric": "anls",
+          "aggregation": "mean",
+          "higher_is_better": true
+        }
+      ],
+      "output_type": "generate_until",
+      "generation_kwargs": {
+        "max_new_tokens": 32,
+        "temperature": 0.0,
+        "do_sample": false,
+        "until": [
+          "\n\n"
+        ]
+      },
+      "repeats": 1,
+      "should_decontaminate": false,
+      "score_key": "score",
+      "lmms_eval_specific_kwargs": {
+        "default": {
+          "pre_prompt": "",
+          "post_prompt": "\nAnswer the question using a single word or phrase."
+        },
+        "qwen_vl": {
+          "pre_prompt": "",
+          "post_prompt": " Answer:"
+        },
+        "pre_prompt": "",
+        "post_prompt": "\nAnswer the question using a single word or phrase."
+      },
+      "auto_strip_thinking": false
+    },
+    "infovqa_val": {
+      "task": "infovqa_val",
+      "dataset_path": "lmms-lab-encoder/DocVQA",
+      "dataset_name": "InfographicVQA",
+      "dataset_kwargs": {
+        "token": true
+      },
+      "test_split": "validation",
+      "full_docs": false,
+      "process_results_use_image": false,
+      "doc_to_visual": "<function infovqa_doc_to_visual at 0x7cfc236287c0>",
+      "doc_to_text": "<function infovqa_doc_to_text at 0x7cff0aae37e0>",
+      "doc_to_target": "answers",
+      "description": "",
+      "target_delimiter": " ",
+      "fewshot_delimiter": "\n\n",
+      "num_fewshot": 0,
+      "metric_list": [
+        {
+          "metric": "anls",
+          "aggregation": "mean",
+          "higher_is_better": true
+        }
+      ],
+      "output_type": "generate_until",
+      "generation_kwargs": {
+        "max_new_tokens": 32,
+        "temperature": 0.0,
+        "do_sample": false,
+        "until": [
+          "\n\n"
+        ]
+      },
+      "repeats": 1,
+      "should_decontaminate": false,
+      "score_key": "score",
+      "lmms_eval_specific_kwargs": {
+        "default": {
+          "pre_prompt": "",
+          "post_prompt": "\nAnswer the question using a single word or phrase."
+        },
+        "pre_prompt": "",
+        "post_prompt": "\nAnswer the question using a single word or phrase."
+      },
+      "auto_strip_thinking": false
+    },
+    "ocrbench": {
+      "task": "ocrbench",
+      "tag": [
+        "public_eval_qwen3_5_family"
+      ],
+      "dataset_path": "echo840/OCRBench",
+      "dataset_kwargs": {
+        "token": true
+      },
+      "test_split": "test",
+      "full_docs": false,
+      "process_results_use_image": false,
+      "doc_to_visual": "<function ocrbench_doc_to_visual at 0x7cfe4618ba60>",
+      "doc_to_text": "<function ocrbench_doc_to_text at 0x7cfe4618af20>",
+      "doc_to_target": "answer",
+      "process_results": "<function ocrbench_process_results at 0x7cfe4618b420>",
+      "description": "",
+      "target_delimiter": " ",
+      "fewshot_delimiter": "\n\n",
+      "num_fewshot": 0,
+      "metric_list": [
+        {
+          "metric": "ocrbench_accuracy",
+          "aggregation": "<function ocrbench_aggregate_accuracy at 0x7cfe4618aca0>",
+          "higher_is_better": true
+        }
+      ],
+      "output_type": "generate_until",
+      "generation_kwargs": {
+        "max_new_tokens": 128,
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "num_beams": 1,
+        "do_sample": false,
+        "until": [
+          "\n\n"
+        ]
+      },
+      "repeats": 1,
+      "should_decontaminate": false,
+      "score_key": "score",
+      "metadata": [
+        {
+          "version": 0.0
+        }
+      ],
+      "lmms_eval_specific_kwargs": {
+        "default": {
+          "pre_prompt": "",
+          "post_prompt": ""
+        },
+        "plm": {
+          "pre_prompt": "",
+          "post_prompt": "\nProvide a short and direct response."
+        },
+        "pre_prompt": "",
+        "post_prompt": ""
+      },
+      "auto_strip_thinking": false
+    },
+    "scienceqa": {
+      "task": "scienceqa",
+      "dataset_path": "lmms-lab-encoder/ScienceQA",
+      "dataset_name": "ScienceQA-FULL",
+      "dataset_kwargs": {
+        "token": true
+      },
+      "test_split": "test",
+      "full_docs": false,
+      "process_results_use_image": false,
+      "doc_to_visual": "<function sqa_doc_to_visual at 0x7cfe461d4f40>",
+      "doc_to_text": "<function sqa_doc_to_text at 0x7cfe461d5300>",
+      "doc_to_target": "<function sqa_doc_to_target at 0x7cfe461d58a0>",
+      "process_results": "<function sqa_process_results at 0x7cfe461d5da0>",
+      "description": "",
+      "target_delimiter": " ",
+      "fewshot_delimiter": "\n\n",
+      "num_fewshot": 0,
+      "metric_list": [
+        {
+          "metric": "exact_match",
+          "aggregation": "mean",
+          "higher_is_better": true,
+          "ignore_case": true,
+          "ignore_punctuation": true
+        }
+      ],
+      "output_type": "generate_until",
+      "generation_kwargs": {
+        "max_new_tokens": 16,
+        "temperature": 0.0,
+        "do_sample": false,
+        "until": [
+          "\n\n"
+        ]
+      },
+      "repeats": 1,
+      "should_decontaminate": false,
+      "score_key": "score",
+      "metadata": [
+        {
+          "version": 0.0
+        }
+      ],
+      "lmms_eval_specific_kwargs": {
+        "default": {
+          "format": "default",
+          "pre_prompt": "",
+          "post_prompt": "\nAnswer with the option's letter from the given choices directly."
+        },
+        "qwen_vl": {
+          "format": "qwen_vl"
+        },
+        "format": "default",
+        "pre_prompt": "",
+        "post_prompt": "\nAnswer with the option's letter from the given choices directly."
+      },
+      "model_specific_generation_kwargs": {
+        "llava": {
+          "image_aspect_ratio": "original"
+        }
+      },
+      "auto_strip_thinking": false
+    },
+    "textvqa_val": {
+      "task": "textvqa_val",
+      "dataset_path": "lmms-lab-encoder/textvqa",
+      "test_split": "validation",
+      "full_docs": false,
+      "process_results_use_image": false,
+      "doc_to_visual": "<function textvqa_doc_to_visual at 0x7cfe461d7100>",
+      "doc_to_text": "<function textvqa_doc_to_text at 0x7cfe461d67a0>",
+      "doc_to_target": "answer",
+      "process_results": "<function textvqa_process_results at 0x7cfe461d6200>",
+      "description": "",
+      "target_delimiter": " ",
+      "fewshot_delimiter": "\n\n",
+      "num_fewshot": 0,
+      "metric_list": [
+        {
+          "metric": "exact_match",
+          "aggregation": "mean",
+          "higher_is_better": true,
+          "ignore_case": true,
+          "ignore_punctuation": true
+        },
+        {
+          "metric": "submission",
+          "aggregation": "<function textvqa_aggregate_submissions at 0x7cfe461d6e80>",
+          "higher_is_better": true
+        }
+      ],
+      "output_type": "generate_until",
+      "generation_kwargs": {
+        "until": [
+          "ASSISTANT:"
+        ]
+      },
+      "repeats": 1,
+      "should_decontaminate": false,
+      "score_key": "score",
+      "lmms_eval_specific_kwargs": {
+        "default": {
+          "pre_prompt": "",
+          "post_prompt": "\nAnswer the question using a single word or phrase.",
+          "ocr": false
+        },
+        "qwen_vl": {
+          "pre_prompt": "",
+          "post_prompt": " Answer:"
+        },
+        "plm": {
+          "pre_prompt": "",
+          "post_prompt": "\nProvide a short and direct response."
+        },
+        "pre_prompt": "",
+        "post_prompt": "\nAnswer the question using a single word or phrase.",
+        "ocr": false
+      },
+      "auto_strip_thinking": false
+    }
+  },
+  "versions": {
+    "ai2d": "Yaml",
+    "chartqa": "Yaml",
+    "docvqa_val": "Yaml",
+    "infovqa_val": "Yaml",
+    "ocrbench": "Yaml",
+    "scienceqa": "Yaml",
+    "textvqa_val": "Yaml"
+  },
+  "n-shot": {
+    "ai2d": 0,
+    "chartqa": 0,
+    "docvqa_val": 0,
+    "infovqa_val": 0,
+    "ocrbench": 0,
+    "scienceqa": 0,
+    "textvqa_val": 0
+  },
+  "higher_is_better": {
+    "ai2d": {
+      "exact_match": true
+    },
+    "chartqa": {
+      "relaxed_overall": true,
+      "relaxed_human_split": true,
+      "relaxed_augmented_split": true
+    },
+    "docvqa_val": {
+      "anls": true
+    },
+    "infovqa_val": {
+      "anls": true
+    },
+    "ocrbench": {
+      "ocrbench_accuracy": true
+    },
+    "scienceqa": {
+      "exact_match": true
+    },
+    "textvqa_val": {
+      "exact_match": true,
+      "submission": true
+    }
+  },
+  "n-samples": {
+    "textvqa_val": {
+      "original": 5000,
+      "effective": 5000
+    },
+    "scienceqa": {
+      "original": 4241,
+      "effective": 4241
+    },
+    "ocrbench": {
+      "original": 1000,
+      "effective": 1000
+    },
+    "infovqa_val": {
+      "original": 2801,
+      "effective": 2801
+    },
+    "docvqa_val": {
+      "original": 5349,
+      "effective": 5349
+    },
+    "chartqa": {
+      "original": 2500,
+      "effective": 2500
+    },
+    "ai2d": {
+      "original": 3088,
+      "effective": 3088
+    }
+  },
+  "config": {
+    "model": "NanoVLMWrapper",
+    "model_args": "",
+    "model_backend": "eval.lmms_eval_wrapper.NanoVLMWrapper (simple)",
+    "batch_size": "8",
+    "batch_sizes": [],
+    "device": "cuda",
+    "use_cache": null,
+    "limit": null,
+    "offset": 0,
+    "bootstrap_iters": 100000,
+    "process_docs_parallel": 4,
+    "gen_kwargs": "",
+    "random_seed": 0,
+    "numpy_seed": 0,
+    "torch_seed": 0,
+    "fewshot_seed": 0,
+    "resolved_cli_args": {
+      "config": "",
+      "model": "checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0919-235751_ab_A_s0/step_10000",
+      "tasks": "docvqa_val,infovqa_val,chartqa,textvqa_val,ocrbench,ai2d,scienceqa",
+      "model_args": "",
+      "num_fewshot": null,
+      "batch_size": "8",
+      "max_batch_size": null,
+      "device": "cuda",
+      "output_path": "eval_results/lmms_ab/A_s0",
+      "limit": null,
+      "use_cache": null,
+      "cache_requests": null,
+      "check_integrity": false,
+      "write_out": false,
+      "log_samples": true,
+      "wandb_log_samples": false,
+      "log_samples_suffix": "model_outputs",
+      "system_instruction": null,
+      "apply_chat_template": false,
+      "fewshot_as_multiturn": false,
+      "show_config": false,
+      "include_path": null,
+      "gen_kwargs": "",
+      "verbosity": "INFO",
+      "wandb_args": "",
+      "timezone": "Asia/Singapore",
+      "hf_hub_log_args": ",output_path=eval_results/lmms_ab/A_s0,token=[REDACTED]",
+      "predict_only": false,
+      "seed": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "trust_remote_code": false,
+      "no_log_wandb": false,
+      "process_with_media": false,
+      "checkpoint_path": "",
+      "global_step": 0,
+      "run_name": "",
+      "checkpoints_dir": "",
+      "steps": null,
+      "eval_tasks": null,
+      "eval_results_dir": "eval_results",
+      "force": false
+    }
+  },
+  "git_hash": "c9d0f1e",
+  "git_branch": "feat/ab-resume-seed",
+  "lmms_eval_version": "feat/ab-resume-seed@c9d0f1e",
+  "date": "20260922_033525",
+  "usage": {},
+  "efficiency": {
+    "by_task": {
+      "textvqa_val": {
+        "docs": 5000.0,
+        "docs_with_token_counts": 0.0,
+        "total_input_tokens": 0.0,
+        "total_output_tokens": 0.0,
+        "total_tokens": 0.0,
+        "total_correct_score": 1080.4999999999977,
+        "avg_output_tokens_per_sample": 0.0,
+        "tokens_per_correct_answer": 0.0
+      },
+      "scienceqa": {
+        "docs": 4241.0,
+        "docs_with_token_counts": 0.0,
+        "total_input_tokens": 0.0,
+        "total_output_tokens": 0.0,
+        "total_tokens": 0.0,
+        "total_correct_score": 1638.0,
+        "avg_output_tokens_per_sample": 0.0,
+        "tokens_per_correct_answer": 0.0
+      },
+      "ocrbench": {
+        "docs": 1000.0,
+        "docs_with_token_counts": 0.0,
+        "total_input_tokens": 0.0,
+        "total_output_tokens": 0.0,
+        "total_tokens": 0.0,
+        "total_correct_score": 0.0,
+        "avg_output_tokens_per_sample": 0.0,
+        "tokens_per_correct_answer": null
+      },
+      "infovqa_val": {
+        "docs": 2801.0,
+        "docs_with_token_counts": 0.0,
+        "total_input_tokens": 0.0,
+        "total_output_tokens": 0.0,
+        "total_tokens": 0.0,
+        "total_correct_score": 0.0,
+        "avg_output_tokens_per_sample": 0.0,
+        "tokens_per_correct_answer": null
+      },
+      "docvqa_val": {
+        "docs": 5349.0,
+        "docs_with_token_counts": 0.0,
+        "total_input_tokens": 0.0,
+        "total_output_tokens": 0.0,
+        "total_tokens": 0.0,
+        "total_correct_score": 0.0,
+        "avg_output_tokens_per_sample": 0.0,
+        "tokens_per_correct_answer": null
+      },
+      "chartqa": {
+        "docs": 2500.0,
+        "docs_with_token_counts": 0.0,
+        "total_input_tokens": 0.0,
+        "total_output_tokens": 0.0,
+        "total_tokens": 0.0,
+        "total_correct_score": 0.0,
+        "avg_output_tokens_per_sample": 0.0,
+        "tokens_per_correct_answer": null
+      },
+      "ai2d": {
+        "docs": 3088.0,
+        "docs_with_token_counts": 0.0,
+        "total_input_tokens": 0.0,
+        "total_output_tokens": 0.0,
+        "total_tokens": 0.0,
+        "total_correct_score": 735.0,
+        "avg_output_tokens_per_sample": 0.0,
+        "tokens_per_correct_answer": 0.0
+      }
+    },
+    "overall": {
+      "docs": 23979.0,
+      "docs_with_token_counts": 0.0,
+      "total_input_tokens": 0.0,
+      "total_output_tokens": 0.0,
+      "total_tokens": 0.0,
+      "total_correct_score": 3453.4999999999977,
+      "avg_output_tokens_per_sample": 0.0,
+      "tokens_per_correct_answer": 0.0
+    }
+  },
+  "task_hashes": {
+    "textvqa_val": "3a0a3e0b1bf218fe87e8c579fdfc57660addca03155e8149aecf13fb81705481",
+    "scienceqa": "887a11391a4689a6a46a1359d97d8910d6afe0479174efff2963e514bc21420d",
+    "ocrbench": "1fb923da4284a8fbf451b3553ce5404d321b69c0b94aa3ad35e7c3afce52f217",
+    "infovqa_val": "af75787ff84a13ace0ce813e2b74896ea3024748068191b57040b77fb19926c4",
+    "docvqa_val": "c5b3a51377a3b9e90771c443ac1ef35dd692fd974caa5dae56f5be916c1af596",
+    "chartqa": "f36e87aa6f8d77306f3f193542d3b3d5e8cc912939152435a6a943170c3180dd",
+    "ai2d": "9f6c1c902d2786555299699e653486e3f4ca1a4fc92cdf53c781ddcad50f3e8f"
+  },
+  "model_source": "<eval.lmms_eval_wrapper.NanoVLMWrapper object at 0x7cfe4a5f2fd0>",
+  "model_name": "",
+  "model_name_sanitized": "",
+  "system_instruction": null,
+  "system_instruction_sha": null,
+  "fewshot_as_multiturn": false,
+  "chat_template": null,
+  "chat_template_sha": null,
+  "start_time": 1524799.044548493,
+  "end_time": 1530038.2105144,
+  "total_evaluation_time_seconds": "5239.16596590681"
+}

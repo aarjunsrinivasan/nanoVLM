@@ -1,0 +1,19 @@
+[01:53:30] START eval_per_doc: checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0919-235751_ab_A_s0/step_10000 checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-071654_ab_C_s0/step_10000 checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-133308_ab_A_s1/step_10000 checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-205241_ab_C_s1/step_10000
+[eval_per_doc] device cuda (NVIDIA H200)
+Resize to max side len: True
+[shard_cache] 9997 train / 3 val shards in /home/asrinivasan/.cache/finevision_shards, working set ~1.5 GiB, max_cache_gb=30.0
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[eval_per_doc] nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0919-235751_ab_A_s0__step_10000: 9684 doc records (1439s)
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[eval_per_doc] nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-071654_ab_C_s0__step_10000: 9684 doc records (1443s)
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[eval_per_doc] nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-133308_ab_A_s1__step_10000: 9684 doc records (1314s)
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (29242 > 8192). Running this sequence through the model will result in indexing errors
+[eval_per_doc] nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-205241_ab_C_s1__step_10000: 9684 doc records (1432s)
+[eval_per_doc] full-pass total check OK: every traversal saw 4842 docs, 1421491 valid tokens
+[eval_per_doc] wrote eval_results/lmms_ab/per_doc_loss.json and eval_results/lmms_ab/per_doc_summary.md
+[03:27:27] DONE eval_per_doc exit=0

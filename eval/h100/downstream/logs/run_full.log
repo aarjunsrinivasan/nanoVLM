@@ -1,0 +1,9 @@
+[19:35:15] START A_s0  (checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0919-235751_ab_A_s0/step_10000)  gpu=1
+[21:02:47] END   A_s0  exit=0  samples_files=7/7
+[21:02:47] START C_s0  (checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-071654_ab_C_s0/step_10000)  gpu=1
+[22:28:33] END   C_s0  exit=0  samples_files=7/7
+[22:28:33] START A_s1  (checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-133308_ab_A_s1/step_10000)  gpu=1
+[23:56:43] END   A_s1  exit=0  samples_files=7/7
+[23:56:43] START C_s1  (checkpoints/nanoVLM_siglip2-base-patch16-512_2048_mp4_SmolLM2-135M-Instruct_1xGPU_bs16_10000_lr_vision_5e-05-language_5e-05-0.00512_0920-205241_ab_C_s1/step_10000)  gpu=1
+[01:24:40] END   C_s1  exit=0  samples_files=7/7
+[01:24:40] ALL DONE
