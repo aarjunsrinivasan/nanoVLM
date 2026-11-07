@@ -69,6 +69,17 @@ class VLMConfig:
     # existed inherit it.
     lm_attn_packing_impl: str = 'dense_block_diagonal'
     lm_attn_flex_block_size: int = 128  # create_block_mask BLOCK_SIZE, only used by 'flex_document_causal'
+    # Use non_blocking=True on host->device .to() calls for input_ids/labels/attention_mask/doc_id
+    # (train.py) and the concatenated image tensor (_process_images below). Safe with pin_memory=True
+    # DataLoaders (both train.py DataLoaders already set this): nothing reads these tensors before
+    # loss.item() forces a sync, so the copy can overlap with enqueuing the forward pass. No-op (not
+    # an error) when device is CPU or the source isn't pinned memory.
+    # On an H200 this is 1.22x faster (16,180 vs 13,298 tokens/s, 200-step arms) at no memory or
+    # correctness cost -- the saving mostly comes from removing an implicit CUDA sync that the old
+    # blocking image .to() call inserted inside the timed forward+backward window, stalling the CPU
+    # thread's kernel-launch dispatch of the rest of the step. Measured in
+    # eval/profile/nonblocking_transfers_ab.md (reproduce with eval/run_nonblocking_ab.py).
+    non_blocking_transfers: bool = True
     lm_chat_template: str ="{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
 
     mp_pixel_shuffle_factor: int = 4

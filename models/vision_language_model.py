@@ -56,7 +56,7 @@ class VisionLanguageModel(nn.Module):
             if not images:  # Handle cases with no images
                 return None
             else:
-                return torch.cat(images, dim=0).to(device)
+                return torch.cat(images, dim=0).to(device, non_blocking=self.cfg.non_blocking_transfers)
         return images # Already a tensor
 
     def forward(self, input_ids, images, attention_mask=None, targets=None, doc_id=None):

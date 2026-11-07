@@ -531,6 +531,7 @@ def train(train_cfg, vlm_cfg):
     overall_peak_mem_allocated_gib = 0.0
     logged_tokens_per_second = []
     stats_history = []  # one entry per stats_log_interval, for callers that want warmup-trimmed stats
+    val_history = []  # one {'global_step', 'val_loss'} per in-loop validation pass
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats()
     
@@ -557,10 +558,10 @@ def train(train_cfg, vlm_cfg):
             is_update_step = (i + 1) % train_cfg.gradient_accumulation_steps == 0
             batch_start_time = time.time()
             images = batch["images"]
-            input_ids = batch["input_ids"].to(device)
-            labels = batch["labels"].to(device)
-            attention_mask = batch["attention_mask"].to(device)
-            doc_id = batch["doc_id"].to(device)
+            input_ids = batch["input_ids"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
+            labels = batch["labels"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
+            attention_mask = batch["attention_mask"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
+            doc_id = batch["doc_id"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
             data_progress.update(batch.get("stream_state", []))
             if DATA_TRACE:
                 print(f"data_trace step {global_step} micro {i} {hashlib.md5(batch['input_ids'].numpy().tobytes()).hexdigest()[:12]}")
@@ -659,10 +660,10 @@ def train(train_cfg, vlm_cfg):
                             print(f"Evaluated {val_batches} batches")
                             break
                         images = batch["images"]
-                        input_ids = batch["input_ids"].to(device)
-                        labels = batch["labels"].to(device)
-                        attention_mask = batch["attention_mask"].to(device)
-                        doc_id = batch["doc_id"].to(device)
+                        input_ids = batch["input_ids"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
+                        labels = batch["labels"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
+                        attention_mask = batch["attention_mask"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
+                        doc_id = batch["doc_id"].to(device, non_blocking=vlm_cfg.non_blocking_transfers)
 
                         with autocast_context:
                             _, loss = model(input_ids, images, attention_mask=attention_mask, targets=labels, doc_id=doc_id)
@@ -693,6 +694,7 @@ def train(train_cfg, vlm_cfg):
                             print(f"Submitting evaluation job: {cmd}")
                             subprocess.run(cmd, shell=True)
 
+                    val_history.append({'global_step': global_step, 'val_loss': avg_val_loss})
                     if avg_val_loss < best_val_loss:
                         best_val_loss = avg_val_loss
                         if is_master():
@@ -885,6 +887,7 @@ def train(train_cfg, vlm_cfg):
             "best_val_loss": best_val_loss,
             "mean_tokens_per_second": mean(logged_tokens_per_second) if logged_tokens_per_second else None,
             "stats_history": stats_history,
+            "val_history": val_history,
         }
 
 def main():
