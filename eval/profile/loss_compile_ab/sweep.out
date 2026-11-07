@@ -1,0 +1,17 @@
+=== E_full rep1 Mon Sep 28 12:37:07 AM UTC 2026
+    exit=0 Fastest: full (13549 tokens/s, 1.00x vs full)
+=== E_gather rep1 Mon Sep 28 12:59:16 AM UTC 2026
+    exit=0 Fastest: gather (13410 tokens/s)
+=== C_full rep1 Mon Sep 28 01:14:20 AM UTC 2026
+    exit=0 Fastest: full (18315 tokens/s, 1.00x vs full)
+=== C_gather rep1 Mon Sep 28 01:26:02 AM UTC 2026
+    exit=0 Fastest: gather (17880 tokens/s)
+=== E_full rep2 Mon Sep 28 01:37:55 AM UTC 2026
+    exit=0 Fastest: full (13144 tokens/s, 1.00x vs full)
+=== E_gather rep2 Mon Sep 28 01:53:10 AM UTC 2026
+    exit=0 Fastest: gather (13510 tokens/s)
+=== C_full rep2 Mon Sep 28 02:08:02 AM UTC 2026
+    exit=0 Fastest: full (17953 tokens/s, 1.00x vs full)
+=== C_gather rep2 Mon Sep 28 02:20:03 AM UTC 2026
+    exit=0 Fastest: gather (17458 tokens/s)
+DONE Mon Sep 28 02:32:17 AM UTC 2026

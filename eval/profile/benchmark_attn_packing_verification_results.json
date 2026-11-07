@@ -1,0 +1,92 @@
+[
+  {
+    "variant": "current_packed_dense_sdpa",
+    "pass": "forward",
+    "latency_ms": 1.2974590295925736,
+    "peak_vram_mb": 558.83349609375,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "current_packed_dense_sdpa",
+    "pass": "forward_backward",
+    "latency_ms": 4.441871610470116,
+    "peak_vram_mb": 638.30224609375,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "dense_block_diagonal_sdpa",
+    "pass": "forward",
+    "latency_ms": 1.7869270639494061,
+    "peak_vram_mb": 652.544921875,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "dense_block_diagonal_sdpa",
+    "pass": "forward_backward",
+    "latency_ms": 4.902205988764763,
+    "peak_vram_mb": 687.80078125,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "flex_document_causal_precomputed_mask",
+    "pass": "forward",
+    "latency_ms": 0.5496134981513023,
+    "peak_vram_mb": 308.544921875,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "flex_document_causal_precomputed_mask",
+    "pass": "forward_backward",
+    "latency_ms": 3.521958226338029,
+    "peak_vram_mb": 404.09912109375,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "flex_document_causal_mask_rebuilt_per_iter",
+    "pass": "forward",
+    "latency_ms": 0.7882910314947367,
+    "peak_vram_mb": 309.09423828125,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "flex_document_causal_mask_rebuilt_per_iter",
+    "pass": "forward_backward",
+    "latency_ms": 3.9003000129014254,
+    "peak_vram_mb": 404.13232421875,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "unpacked_padded_sdpa",
+    "pass": "forward",
+    "latency_ms": 1.1530255898833275,
+    "peak_vram_mb": 505.66943359375,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  },
+  {
+    "variant": "unpacked_padded_sdpa",
+    "pass": "forward_backward",
+    "latency_ms": 3.6767425015568733,
+    "peak_vram_mb": 670.5625,
+    "batch_size": 2,
+    "seq_length": 4096,
+    "block_size": 128
+  }
+]
